@@ -8,6 +8,33 @@ const HONORIFIC = /\b(Mr|Mrs|Ms|Dr|herra|rouva)\.?\s+\p{Lu}/u
 const CONFIDENTIAL = /\b(confidential|luottamuksellinen|salainen|off the record|just between us|between you and me|(keep|is) (this|it) between us|don'?t (share|quote|repeat)|nda)\b/i
 const OK_CAPS = new Set(["a", "an", "the", "so", "and", "but", "i", "we", "our", "their", "this", "that", "it", "in", "on", "at", "for", "if", "velho", "velho's", "ai", "ceo", "cfo", "cto", "eu", "ted", "prh", "oy", "oyj", "ab"])
 
+// "Why it matters" may state only what its sources state. The tie from a cited fact to the process ("every new framework
+// adds dealer parts orders") is an inference: it must read as one, a conditional ("If those orders also arrive as PDFs, …")
+// or a question, or it is marked as our assumption. ponytail: a causal-verb list; a new verb slips through until added.
+export const ASSUME = "Our assumption, to check with you:"
+const CAUSAL = /\b(adds?|added|brings?|means?|drives?|creates?|generates?|increases?|raises?|multipl(?:y|ies)|feeds?|leads? to|results? in|grows?|expands?|every new|each new|more (?:orders|reports|work|paperwork|reporting))\b/i
+const MARKED = /^(?:if|assuming|suppose|whether|in case|could|would|does|do|is|are|how|what)\b/i
+const clauses = (t: string) => t.split(/(?<=[.!?;])\s+|\s+[—–]\s+/).map((c) => c.trim()).filter(Boolean)
+
+// The first clause that states an uncited conclusion as fact, or null. Text after the ASSUME marker is already marked.
+export function uncitedInference(text: string): string | null {
+  const facts = text.split(ASSUME)[0]
+  return clauses(facts).find((c) => CAUSAL.test(c) && !MARKED.test(c) && !c.trim().endsWith("?")) ?? null
+}
+
+// Keeps the cited facts as they are and moves the first unmarked inference (and what follows) behind the ASSUME marker.
+// When nothing factual is left in front of it, the whole text becomes the assumption (callers may drop such a line).
+export function markInference<T extends { text: string }>(c: T): T {
+  const bad = uncitedInference(c.text)
+  if (!bad) return c
+  const parts = clauses(c.text.split(ASSUME)[0])
+  const i = parts.indexOf(bad)
+  const facts = parts.slice(0, i).join(" ").replace(/[;,:\s]+$/, "")
+  const rest = parts.slice(i).join(" ")
+  const lead = facts ? `${/[.!?]$/.test(facts) ? facts : `${facts}.`} ` : ""
+  return { ...c, text: `${lead}${ASSUME} ${rest.charAt(0).toLowerCase() + rest.slice(1)}` }
+}
+
 // Spoken length at the player's rate (2.6 words a second). Shared by the player, compliance and the eval.
 export const speechSecs = (lines: { text: string }[]) => Math.round(lines.reduce((n, l) => n + l.text.split(/\s+/).filter(Boolean).length, 0) / 2.6)
 export const MAX_SECS = 80
@@ -62,6 +89,13 @@ export function checkCompliance(input: {
   const publicInStore = sources.filter((x) => x.kind === "ted" || x.kind === "site").length
   if (publicInStore && !cited.some((id) => kind.get(id) === "ted" || kind.get(id) === "site"))
     issues.push(`page cites no public source (TED or site) although the store holds ${publicInStore}`)
+  // A cited public fact must not carry an uncited conclusion as if the source said it (the chips would make it look sourced).
+  const why = letter?.why?.text && uncitedInference(letter.why.text)
+  if (why) issues.push(`"Why it matters" states an uncited conclusion as fact: ${why.slice(0, 80)}`)
+  for (const l of lines) {
+    const x = l.source_ids.some((id) => kind.get(id) === "ted" || kind.get(id) === "site") && uncitedInference(l.text)
+    if (x) issues.push(`audio line states an uncited conclusion as fact: ${x.slice(0, 80)}`)
+  }
   if (isConfidential(lead) && lines.some((l) => l.source_ids.some((id) => hallwayIds.has(id))))
     issues.push("lead is marked confidential but the script uses the hallway detail")
 
@@ -94,5 +128,16 @@ if (import.meta.main) {
   assert.ok(!page({ recipient: null, scale: null, questions: [], checked: { text: "A framework.", source_ids: ["s_t"] } }).some((i) => i.startsWith("page cites")))
   const long = checkCompliance({ companyName: "X", lead: null, sources: [], opps: [], letter: null, lines: [{ host: "A", text: "Velho's AI analysts. " + "word ".repeat(215), source_ids: [] }] }).issues
   assert.ok(long.some((i) => i.startsWith("audio runs about")))
+  const why = (text: string) => page({ recipient: null, scale: null, questions: [], checked: null, why: { text, source_ids: ["s_t"] } })
+  assert.ok(why("You won the X framework in July 2026; every new framework adds parts orders.").some((i) => i.startsWith(`"Why it matters" states`)))
+  assert.ok(!why("You won the X framework in July 2026. If its orders also arrive as PDFs, they add to the retyping.").some((i) => i.startsWith(`"Why it matters" states`)))
+  const whyText = "You won the Lesy ČR harvester service framework in July 2026; every new service framework adds dealer parts orders that today get retyped from PDFs into the ERP."
+  assert.equal(uncitedInference(whyText), "every new service framework adds dealer parts orders that today get retyped from PDFs into the ERP.")
+  assert.equal(markInference({ text: whyText }).text, `You won the Lesy ČR harvester service framework in July 2026. ${ASSUME} every new service framework adds dealer parts orders that today get retyped from PDFs into the ERP.`)
+  assert.equal(uncitedInference(markInference({ text: whyText }).text), null)
+  const ok = "You won the Lesy ČR harvester service framework in July 2026. If its orders also arrive as PDFs, they add to the same retyping."
+  assert.equal(uncitedInference(ok), null)
+  assert.equal(markInference({ text: "Each new framework adds orders." }).text, `${ASSUME} each new framework adds orders.`)
+  assert.equal(uncitedInference("Does each new framework add orders the same way?"), null)
   console.log("compliance self-check ok")
 }

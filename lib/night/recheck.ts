@@ -3,7 +3,7 @@
 // on the current rules. No model call, no network, never approves. /api/hq runs it once per server process, so /hq
 // never opens on a stale hold; scripts/recheck-compliance.ts runs it by hand (--dry to preview).
 import { all, endRun, logStep, run, startRun } from "../db.ts"
-import { checkCompliance } from "./compliance.ts"
+import { checkCompliance, markInference } from "./compliance.ts"
 import { loadContext } from "./researcher.ts"
 import type { Approval, Opportunity, Page } from "../types.ts"
 
@@ -14,8 +14,20 @@ export function recheckWaiting(dry = false): { slug: string; company: string; wa
   return waiting.map((p) => {
     const ctx = loadContext(p.company_id, p.lead_id)
     const opps = all<Opportunity>("SELECT * FROM opportunities WHERE page_id = ? ORDER BY position", p.id)
-    const now = checkCompliance({ companyName: ctx.company.name, lead: ctx.lead, sources: ctx.sources, opps, lines: p.script, letter: p.letter })
-    const changed = JSON.stringify(p.compliance) !== JSON.stringify(now)
+    // Today's sanitizer first: an uncited conclusion in the why line, or in an audio line citing a public source, is
+    // marked as our assumption (deterministic, logged). Drafts made before that rule are repaired, not left on hold.
+    const pub = new Set(ctx.sources.filter((x) => x.kind === "ted" || x.kind === "site").map((x) => x.id))
+    const letter = p.letter?.why ? { ...p.letter, why: markInference(p.letter.why) } : p.letter
+    const script = p.script.map((l) => (l.source_ids.some((id) => pub.has(id)) ? markInference(l) : l))
+    const repaired = JSON.stringify([letter, script]) !== JSON.stringify([p.letter, p.script])
+    if (repaired && !dry) {
+      const r = startRun("compliance", p.id, "deterministic")
+      logStep(r, "info", "mark_inference", { why: p.letter?.why?.text ?? null }, { why: letter?.why?.text ?? null, lines: script.filter((l, i) => l.text !== p.script[i].text).map((l) => l.text) })
+      endRun(r, "ok", "uncited conclusion marked as our assumption (recheck)")
+      run("UPDATE pages SET letter = ?, script = ? WHERE id = ?", letter, script, p.id)
+    }
+    const now = checkCompliance({ companyName: ctx.company.name, lead: ctx.lead, sources: ctx.sources, opps, lines: script, letter })
+    const changed = repaired || JSON.stringify(p.compliance) !== JSON.stringify(now)
     if (changed && !dry) {
       const r = startRun("compliance", p.id, "deterministic")
       logStep(r, "info", "recheck", { was: p.compliance }, now)
