@@ -1,0 +1,7 @@
+:root { --bg: #fafaf8; --fg: #1b1b1b; --muted: #6b6b6b; --line: #e3e3de; --accent: #2a5bd7; }
+@media (prefers-color-scheme: dark) { :root { --bg: #141414; --fg: #ececec; --muted: #9a9a9a; --line: #2c2c2c; --accent: #7aa2ff; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 24px 16px; }
+a { color: var(--accent); }
+.muted { color: var(--muted); }
