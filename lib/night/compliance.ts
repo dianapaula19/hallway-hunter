@@ -24,9 +24,11 @@ export function suspectNames(text: string, corpus: string): string[] {
   for (const m of text.matchAll(/\b\p{Lu}[\p{L}'-]+(?:\s+\p{Lu}[\p{L}'-]+)+/gu)) {
     // Drop allowlisted words, acronyms (SAP, RTG) and possessives; a name needs 2+ remaining words.
     const words = m[0].split(/\s+/).map((w) => w.replace(/'s$/, "")).filter((w) => !OK_CAPS.has(w.toLowerCase()) && !/^\p{Lu}{2,}$/u.test(w))
-    // Known if any adjacent pair is in our evidence ("Two Luka Koper", "Luka Koper's RTG").
+    // Known if any adjacent pair is in our evidence ("Two Luka Koper", "Luka Koper's RTG"), or if fewer than 2 of the words
+    // are unknown on their own: "Väylävirasto's Mipro TCS" is a TED buyer plus the company's product, not a person.
     const known = words.slice(1).some((w, i) => corpus.includes(`${words[i]} ${w}`.toLowerCase()))
-    if (words.length >= 2 && !known) out.push(m[0])
+    const unknown = words.filter((w) => !new RegExp(`(^|[^\\p{L}])${w.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^\\p{L}])`, "u").test(corpus))
+    if (words.length >= 2 && !known && unknown.length >= 2) out.push(m[0])
   }
   return out
 }
@@ -72,6 +74,9 @@ if (import.meta.main) {
   const corpus = "buyer: luka koper, pristaniški. rahmenvertrag deutsche bahn"
   assert.deepEqual(suspectNames("Two Luka Koper awards. The Deutsche Bahn deal. Luka Koper's RTG cranes.", corpus), [])
   assert.deepEqual(suspectNames("Ask Matti Virtanen about it.", corpus), ["Ask Matti Virtanen"])
+  const ted = "buyer: väylävirasto. mipro tcs ja mipro tcs-o asetinlaitteiden. tenderer/winner incl. mipro oy."
+  assert.deepEqual(suspectNames("You won Väylävirasto's Mipro TCS renewal.", ted), [])
+  assert.deepEqual(suspectNames("Väylävirasto said Matti Virtanen wants it.", ted), ["Matti Virtanen"])
   const lead = (quote: string) => ({ quote, pain: "", next_step: "" }) as Lead
   assert.equal(isConfidential(lead("two of us retype it, three hours a day between us")), false)
   assert.equal(isConfidential(lead("Keep this between us, but the ERP is a mess.")), true)
