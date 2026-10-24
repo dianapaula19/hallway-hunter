@@ -36,7 +36,8 @@ const SCHEMA = {
   },
 }
 
-export async function extractLead(companyId: string, transcript: string): Promise<Lead> {
+// synthetic: a demo note, invented for a demo (the /capture toggle); pages label it so nobody reads it as a real quote.
+export async function extractLead(companyId: string, transcript: string, synthetic = false): Promise<Lead> {
   if (!get("SELECT id FROM companies WHERE id = ?", companyId)) throw new Error("unknown company")
   const clean = scrubNames(transcript.trim()).slice(0, 4000)
   if (!clean) throw new Error("empty transcript")
@@ -73,6 +74,7 @@ export async function extractLead(companyId: string, transcript: string): Promis
     pain: clip(x.pain, 200),
     next_step: clip(x.next_step, 200),
     temperature: (["cold", "warm", "hot"] as const).includes(x.temperature) ? x.temperature : "warm",
+    synthetic: synthetic ? 1 : 0,
   }
   insert("leads", lead as unknown as Record<string, unknown>)
   addSource({ company_id: companyId, kind: "hallway", url: null, lead_id: lead.id, title: `Hallway: ${lead.role}`, excerpt: `"${lead.quote}" (${lead.role})` })

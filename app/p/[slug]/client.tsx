@@ -2,6 +2,7 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react"
 import posthog from "posthog-js"
 import { clampInput, eurPerYear, FORMULA_INPUTS, type FormulaKey } from "@/lib/night/formula.ts"
+import { speechSecs } from "@/lib/night/compliance.ts"
 import { fi, fiEur, fiText, parseFi } from "./letter.ts"
 import type { EuroFormula, ScriptLine } from "@/lib/types.ts"
 import s from "./page.module.css"
@@ -127,8 +128,7 @@ export function Player({ lines, num }: { lines: ScriptLine[]; num: Record<string
   }
   const stop = () => { gen.current++; window.speechSynthesis.cancel(); setState("idle"); setCur(-1) }
 
-  const words = lines.reduce((n, l) => n + l.text.split(/\s+/).length, 0)
-  const secs = Math.round(words / 2.6)
+  const secs = speechSecs(lines)
 
   return (
     <div className={s.player}>
@@ -161,5 +161,28 @@ export function Player({ lines, num }: { lines: ScriptLine[]; num: Record<string
       </ol>
       </details>
     </div>
+  )
+}
+
+// Two sentences the person we met can pass up to the executive, with this page's link. Copy, or open the
+// viewer's own mail app with no recipient filled in: the viewer picks who gets it and presses send (CLAUDE.md rule 1).
+export function Forward({ reader, text, subject }: { reader: string; text: string; subject: string }) {
+  const [copied, setCopied] = useState(false)
+  const [href, setHref] = useState("")
+  useEffect(() => setHref(window.location.href.split("?")[0]), [])
+  const full = `${text}\n\n${href}`
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(full); setCopied(true); setTimeout(() => setCopied(false), 2500) } catch { setCopied(false) }
+  }
+  return (
+    <section className={s.fwd} aria-labelledby="fwd">
+      <h2 id="fwd" className={s.h2}>Forward to your {reader}</h2>
+      <p className={s.fwdText}>{text}</p>
+      <p className={s.fwdRow}>
+        <button className={s.fwdBtn} onClick={copy}>{copied ? "Copied" : "Copy text and link"}</button>
+        <a className={s.fwdBtn} href={`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(full)}`}>Email it</a>
+        <span className={s.yesNote}>Opens your own email app with no recipient filled in. Nothing is sent until you press send.</span>
+      </p>
+    </section>
   )
 }

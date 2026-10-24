@@ -60,6 +60,7 @@ export interface Lead {
   pain: string
   next_step: string
   temperature: Temperature
+  synthetic: number // 1 = demo note, invented for a demo; pages say "nobody at <company> said this"
   created_at: string
 }
 
@@ -96,6 +97,15 @@ export interface SkepticScore {
   read: number // would they read to the end
   reply: number // would they reply
   notes: string
+  reply_why?: string // one sentence: why the reader would or would not answer the ask
+}
+
+// Letter content beyond the cards, written by the night path (pages.letter).
+export interface PageLetter {
+  recipient: string | null // who the page is framed for: "COO", "CFO", or the role met
+  scale: Claim | null // one public size fact (headcount, dealers, countries) from the company's own site
+  checked: Claim | null // "What we checked": a public source tied to the same process, or that nothing public mentions it
+  questions: Claim[] // no-lead pages: what we'd ask, each grounded in a public source
 }
 
 export type PageStatus = "draft" | "pending_approval" | "approved" | "killed"
@@ -110,6 +120,7 @@ export interface Page {
   script: ScriptLine[] // ~75s two-host audio script
   skeptic: SkepticScore[] // one per round, max 2 rewrites
   compliance: { ok: boolean; issues: string[] } | null
+  letter: PageLetter | null
   created_at: string
 }
 

@@ -58,6 +58,7 @@
 .miniH1 { font: 500 21px/1.18 var(--serif); letter-spacing: -.01em; }
 .miniH1 > span { display: block; }
 .nowrap { white-space: nowrap; }
+.miniDemo { font-size: 10px; line-height: 1.35; color: var(--muted); }
 .miniQuote { margin-top: 4px; padding-left: 10px; border-left: 2px solid var(--accent); font: italic 13px/1.45 var(--serif); color: var(--soft); }
 .miniCalc { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 0; margin-top: 6px; padding: 7px 9px; border-radius: 6px; background: var(--paper); font-size: 11px; color: var(--soft); font-variant-numeric: tabular-nums; }
 .miniCalc b { font-weight: 600; color: var(--ink); padding: 1px 4px; border: 1px solid var(--line); border-radius: 3px; background: var(--card); }

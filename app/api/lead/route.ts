@@ -4,12 +4,12 @@ import type { Lead } from "@/lib/types.ts"
 
 export const dynamic = "force-dynamic"
 
-// POST {company_id, transcript} -> lead (role only, names scrubbed) + its hallway source.
+// POST {company_id, transcript, synthetic?} -> lead (role only, names scrubbed) + its hallway source.
 export async function POST(req: Request) {
-  const { company_id, transcript } = (await req.json().catch(() => ({}))) as { company_id?: string; transcript?: string }
+  const { company_id, transcript, synthetic } = (await req.json().catch(() => ({}))) as { company_id?: string; transcript?: string; synthetic?: boolean }
   if (!company_id || !transcript?.trim()) return Response.json({ error: "company_id and transcript required" }, { status: 400 })
   try {
-    return Response.json({ lead: await extractLead(company_id, transcript) })
+    return Response.json({ lead: await extractLead(company_id, transcript, synthetic === true) })
   } catch (e) {
     return Response.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 })
   }

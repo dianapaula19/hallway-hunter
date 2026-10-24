@@ -14,6 +14,7 @@
     "check": "node scripts/check.ts",
     "seed": "node scripts/seed.ts",
     "night": "node scripts/night.ts",
+    "eval": "node scripts/eval.ts",
     "bot": "node scripts/telegram-bot.ts"
   },
   "dependencies": {

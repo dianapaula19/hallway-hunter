@@ -16,7 +16,7 @@ const waiting = all<Page & { approval_id: string; payload: Approval["payload"] }
 for (const p of waiting) {
   const ctx = loadContext(p.company_id, p.lead_id)
   const opps = all<Opportunity>("SELECT * FROM opportunities WHERE page_id = ? ORDER BY position", p.id)
-  const now = checkCompliance({ companyName: ctx.company.name, lead: ctx.lead, sources: ctx.sources, opps, lines: p.script })
+  const now = checkCompliance({ companyName: ctx.company.name, lead: ctx.lead, sources: ctx.sources, opps, lines: p.script, letter: p.letter })
   const was = p.compliance
   const same = JSON.stringify(was) === JSON.stringify(now)
   console.log(`${ctx.company.name} ${p.slug}: ${was?.ok ? "clear" : `${was?.issues.length ?? "?"} issue(s)`} -> ${now.ok ? "clear" : now.issues.join("; ")}${same ? " (unchanged)" : ""}`)

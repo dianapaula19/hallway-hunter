@@ -124,3 +124,6 @@ textarea.input { width: 100%; resize: vertical; font: 17px/1.5 var(--serif); }
   .card { padding: 24px 26px; }
   .empty { padding: 26px 0 0; max-width: 560px; } /* no border: a dashed box read as a drop zone */
 }
+
+.demoNote { display: flex; gap: 10px; align-items: flex-start; font-size: var(--text-sm, 14px); color: var(--muted); line-height: 1.4; min-height: 44px; cursor: pointer; }
+.demoNote input { width: 20px; height: 20px; margin: 2px 0 0; flex: none; accent-color: var(--velho, currentColor); }

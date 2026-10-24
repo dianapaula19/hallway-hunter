@@ -36,8 +36,12 @@ Checks: `npm run typecheck && npm run check && npm run build`, plus self-checks 
 node lib/live/selfcheck.ts            # PRH/TED parsers, ranking, did-you-mean, site guard, name scrub, 120-word fit
 node lib/live/selfcheck.ts --live     # + read-only PRH/TED lookups on real companies (contacts nobody)
 node lib/night/sanitize.ts            # citation sanitizer
-node lib/night/compliance.ts          # name heuristic
+node lib/night/compliance.ts          # name heuristic, audio length, public-citation rule
+node lib/night/script.ts              # script fitting: one label, no filler, ask = one question, ≤170 words
+node lib/night/scale.ts               # company-size fact parser
 ```
+
+Output eval, repeatable and with no model call: `npm run eval` reads the stored briefs and pages and writes [`evals/results.md`](evals/results.md) (brief words ≤ 120, citations, public sources cited, audio seconds ≤ 75, labelled euro figures, skeptic scores, compliance re-run with today's rules). `node scripts/eval.ts --recheck` also stores that fresh compliance on drafts waiting for approval.
 
 Reset the local data (`data/hh.db` is gitignored and holds every test lead, page, run and outbox draft):
 
@@ -60,8 +64,9 @@ Model: `ANTHROPIC_MODEL`, default `claude-sonnet-5-5`. Every call goes through `
    - a dissolved company (e.g. Y-tunnus `0595625-5`): "ceased in the trade register", and no brief;
    - a small private Oy with no tenders: the brief is marked **thin data** and is not padded;
    - nonsense: "Nothing in the PRH register", with a hint to use the Y-tunnus.
-4. **Voice note.** Record a short note in Finnish or English, edit the transcript and save. The lead shows a role, a quote, the pain point and a temperature, with no name. Show the delete button.
-5. **`/hq` → Run night path now** on that lead. The board fills live: researcher, showrunner, skeptic CEO (up to 2 rewrites), then compliance. It takes about 30-40 s with a key.
+4. **Voice note (main path, rehearse it).** Speak a short, made-up note about the judge's company in Finnish or English ("their two buyers retype supplier PDFs every morning"), edit the transcript and save. "Demo note" is ticked by default, so every page labels the quote "invented for this demo; nobody at <company> said this". The lead shows a role, a quote, the pain point and a temperature, with no name. Show the delete button.
+   - Without a note the night path still runs, but the page is only "What we'd ask you" questions from TED and the company site, and it reads weak: Tokmanni with no lead scored stop 3, read 4, reply 2. Always record the note.
+5. **`/hq` → Run night path now** on that lead, "For the COO" (or CEO, CFO, the person met). The board fills live: a size fact from the company's own site, researcher, showrunner, skeptic (reading as that executive, one rewrite), then compliance. It took 18-25 s on 2026-10-24.
 6. **Open `/p/<slug>`.**
    - The page opens with the hallway quote, attributed by role only, then usually one card: we only show a card a source backs.
    - Below it, "One question": a single yes/no offer (a free one-page teardown of that process, no data, no call).
@@ -101,7 +106,7 @@ node matrix/agent-ops/feed.mjs --check
 
 ## Known limits
 
-- The Skeptic-CEO gate scores real pages stop 5-6, read 6-7, reply 4-5 out of 10. Cutting the guessed cards lifted read to 7. Reply stayed at 4-5 through six different asks (meeting, teardown, sample, mock-up), so we treat it as the ceiling for an unsolicited page and do not pad. Such pages go to approval marked "below bar" on /hq.
+- The skeptic gate scores real pages stop 5-6, read 6-7, reply 4-5 out of 10 as a CEO. Since it reads as the executive the page is for and judges at the company's real size, the Ponsse page scores 5/6/4: its stated reason is that €18 600 is small for Ponsse. We keep the pilot figure honest rather than scale it to a headcount nobody said does the task; the page says the estimate covers the formula's team only and shows the size fact next to it. Pages under the bar still go to approval, marked "below bar" on /hq, with the skeptic's one-line reason for its reply score.
 - The name scrub is regex plus a model-provided name list. Finnish consonant-gradation forms (Pekka → Pekan) depend on the model listing the name.
 - The site guard checks hostnames only, with no DNS resolution.
 - The optional Telegram bot is not built. `npm run bot` only prints a message and exits.

@@ -110,6 +110,24 @@
 .yes:hover { filter: brightness(1.1); }
 .yesNote { font-size: 13px; color: var(--muted); max-width: 300px; }
 
+/* forwardable two sentences for the executive */
+.fwd { margin-top: 40px; padding: 18px 20px; background: var(--paper); border-radius: 10px; }
+.fwd .h2 { margin-bottom: 8px; }
+.fwdText { margin: 0; font: 16px/1.55 var(--serif); color: var(--ink); }
+.fwdRow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin: 14px 0 0; }
+:global(.paper) .fwdBtn {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--card); color: var(--accent); font: inherit; font-size: 14px; font-weight: 600; text-decoration: none; cursor: pointer;
+}
+.fwdBtn:hover { border-color: var(--accent); }
+
+/* what we checked: the public evidence behind the same process, and the company's size */
+.checked { margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 15px; color: var(--soft); }
+.checked p { margin: 6px 0 0; }
+.checkedH { margin: 0; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; color: var(--soft); }
+.questions { margin: 14px 0 0; padding-left: 22px; display: grid; gap: 12px; font: 18px/1.5 var(--serif); color: var(--ink); }
+.demoNote { margin: 8px 0 0; font-size: 13px; color: var(--warn, var(--muted)); }
+
 /* signature */
 .sign { display: flex; flex-direction: column; gap: 2px; margin-top: 48px; font-size: 14px; }
 .signRole { font: italic 400 22px/1.3 var(--serif); color: var(--ink); padding-top: 14px; border-top: 1px solid var(--ink); width: max-content; min-width: 200px; }
