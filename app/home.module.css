@@ -1,0 +1,68 @@
+/* Landing: same letterpress calm as /p, a little wider so the three steps sit side by side. */
+.wrap { max-width: 1040px; margin: 0 auto; padding: 32px 24px 64px; }
+
+.top { display: flex; align-items: baseline; gap: 10px; margin-bottom: 72px; }
+.brand { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; color: var(--ink); }
+.by { font-size: 13px; color: var(--muted); }
+
+.hero { max-width: 900px; margin-bottom: 88px; }
+.eyebrow, .h2, .stepWhen, .made {
+  font-size: 13px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; color: var(--soft); margin: 0;
+}
+.h1 { font: 500 clamp(36px, 6.4vw, 60px)/1.06 var(--serif); letter-spacing: -.015em; margin: 16px 0 0; text-wrap: balance; }
+.lede { font: 400 clamp(19px, 2.4vw, 22px)/1.5 var(--serif); color: var(--soft); margin: 24px 0 0; max-width: 600px; text-wrap: pretty; }
+.cta {
+  display: inline-flex; align-items: center; gap: 10px; min-height: 52px; margin-top: 36px; padding: 0 26px;
+  border-radius: 999px; background: var(--accent); font-weight: 600; text-decoration: none;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+:global(.paper) .cta { color: var(--on-accent); }
+.cta:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgb(34 80 110 / .25); }
+.cta span { transition: transform .15s ease; }
+.cta:hover span { transform: translateX(3px); }
+
+.h2 { margin-bottom: 20px; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: s; }
+.step { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 26px 24px 24px; }
+/* a thin connector between cards on wide screens */
+.step:not(:last-child)::after {
+  content: ""; position: absolute; top: 46px; right: -17px; width: 18px; height: 1px; background: var(--accent); opacity: .5;
+}
+.stepIcon { color: var(--accent); width: 40px; height: 40px; margin-bottom: 18px; }
+.stepWhen { font-size: 12px; color: var(--accent); }
+.stepWhen span { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 4px; }
+.h3 { font: 600 23px/1.25 var(--serif); margin: 6px 0 8px; }
+.stepText { margin: 0; color: var(--soft); font-size: 15px; line-height: 1.55; }
+
+.latest { margin-top: 80px; }
+.drafts { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.draft {
+  display: grid; gap: 2px; min-height: 44px; padding: 20px 22px; border-radius: 14px; text-decoration: none;
+  background: var(--card); border: 1px solid var(--line); transition: border-color .15s ease, transform .15s ease;
+}
+.draft:hover { border-color: var(--accent); transform: translateY(-1px); }
+.made { font-size: 11px; color: var(--muted); }
+:global(.paper) .company { font: 500 22px/1.25 var(--serif); color: var(--ink); }
+.status { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 14px; color: var(--soft); }
+.status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.status[data-status="approved"]::before { background: #3f8f5f; }
+.status[data-status="pending_approval"]::before { background: #c8902d; }
+.date { font-size: 13px; color: var(--muted); }
+
+.foot { margin-top: 88px; padding-top: 24px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 32px; }
+.foot p { margin: 0; max-width: 620px; }
+.foot strong { color: var(--soft); }
+.foot a { display: inline-flex; align-items: center; min-height: 44px; }
+
+@media (max-width: 760px) {
+  .wrap { padding: 24px 16px 48px; }
+  .top { margin-bottom: 48px; }
+  .hero { margin-bottom: 64px; }
+  .cta { width: 100%; justify-content: center; }
+  .steps { grid-template-columns: 1fr; gap: 12px; }
+  .step { display: grid; grid-template-columns: 40px 1fr; column-gap: 16px; padding: 20px 18px; }
+  .stepIcon { grid-row: span 3; margin: 0; }
+  .step:not(:last-child)::after { top: auto; bottom: -13px; right: auto; left: 38px; width: 1px; height: 14px; }
+  .latest { margin-top: 64px; }
+  .foot { margin-top: 64px; }
+}

@@ -1,5 +1,6 @@
 "use client"
 import { useEffect, useRef, useState } from "react"
+import Link from "next/link"
 import posthog from "posthog-js"
 import type { Brief, Claim, Company, Lead, Source } from "@/lib/types"
 import { withBase } from "@/lib/base.ts"
@@ -158,8 +159,9 @@ export default function CapturePage() {
   const order = [...srcById.keys()]
   const Chips = ({ c }: { c: Claim }) => (
     <>{c.source_ids.map((id) => srcById.has(id) && (
-      <button key={id} className={s.chip} onClick={() => setOpen(open === id ? null : id)} aria-expanded={open === id}>
-        {order.indexOf(id) + 1}·{srcById.get(id)!.kind}
+      <button key={id} className={`${s.chip} ${open === id ? s.chipOn : ""}`} onClick={() => setOpen(open === id ? null : id)} aria-expanded={open === id}
+        aria-label={`Source ${order.indexOf(id) + 1}: ${srcById.get(id)!.title}`}>
+        {order.indexOf(id) + 1}<span className={s.chipKind}>{srcById.get(id)!.kind}</span>
       </button>
     ))}</>
   )
@@ -167,8 +169,11 @@ export default function CapturePage() {
     const x = open ? srcById.get(open) : null
     return x ? (
       <div className={s.source}>
-        <b>{x.title}</b><p>{x.excerpt}</p>
+        <p className={s.sourceKind}>[{order.indexOf(x.id) + 1}] {x.kind}</p>
+        <p className={s.sourceTitle}>{x.title}</p>
+        <p className={s.sourceExcerpt}>“{x.excerpt}”</p>
         {x.url && <a href={x.url} target="_blank" rel="noreferrer noopener">{x.url}</a>}
+        <button className={s.link} onClick={() => setOpen(null)}>Close</button>
       </div>
     ) : null
   }
@@ -176,12 +181,12 @@ export default function CapturePage() {
 
   const list = (title: string, cs: Candidate[]) => (
     <section className={s.card}>
-      <h2>{title}</h2>
+      <h2 className={s.h2}>{title}</h2>
       <ul className={s.cands}>
         {cs.map((c) => (
           <li key={c.business_id}>
-            <button disabled={!!busy} onClick={() => { setT0(Date.now()); void runScout(c.business_id) }} className={c.ceased ? s.ceased : ""}>
-              <b>{c.name}</b> {c.ceased && <span className={s.tag}>ceased</span>}
+            <button disabled={!!busy} onClick={() => { setT0(Date.now()); void runScout(c.business_id) }} className={`${s.cand} ${c.ceased ? s.ceased : ""}`}>
+              <span className={s.candName}>{c.name} {c.ceased && <span className={s.tag}>ceased</span>}</span>
               <small>{c.business_id} · {c.line || "no business line"} · reg. {c.registered || "?"}</small>
             </button>
           </li>
@@ -190,81 +195,133 @@ export default function CapturePage() {
     </section>
   )
 
+  const idle = !cap && !scout && !busy?.startsWith("Researching")
+
   return (
-    <main className={s.main}>
-      <header className={s.head}>
-        <h1>Hallway Hunter</h1>
-        <span className={s.label}>Velho draft · by Velho&apos;s AI analysts</span>
-      </header>
+    <div className="paper">
+      <main className={s.main}>
+        <div className={s.side}>
+          <header className={s.head}>
+            <Link href="/" className={s.brand}>Hallway Hunter</Link>
+            <span className={s.internal}>Internal · for Velho consultants</span>
+          </header>
+          <h1 className={s.h1}>Who are you talking to?</h1>
+          <p className={s.sub}>Snap their badge or type the company. A cited brief appears in about 10 seconds.</p>
 
-      <section className={s.card}>
-        <label className={s.snap}>
-          📷 Snap badge or card
-          <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden disabled={!!busy} onChange={(e) => onPhoto(e.target.files?.[0])} />
-        </label>
-        <form className={s.row} onSubmit={(e) => { e.preventDefault(); if (q.trim()) void capture(JSON.stringify({ q })); else setError("Type a company name or a Y-tunnus (like 1234567-8) first.") }}>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Company name or Y-tunnus" enterKeyHint="search" autoComplete="organization" />
-          <button disabled={!!busy}>Go</button>
-        </form>
-        {busy && <p className={s.busy} role="status">{busy} {((Math.max(tick, t0) - t0) / 1000).toFixed(1)} s</p>}
-        {error && <p className={s.error} role="alert">{error}</p>}
-      </section>
+          <section className={s.panel}>
+            <label className={`${s.snap} ${busy ? s.off : ""}`}>
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" />
+              </svg>
+              Snap badge or card
+              <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden disabled={!!busy} onChange={(e) => onPhoto(e.target.files?.[0])} />
+            </label>
+            <p className={s.or}><span>or type it</span></p>
+            <form className={s.row} onSubmit={(e) => { e.preventDefault(); if (q.trim()) void capture(JSON.stringify({ q })); else setError("Type a company name or a Y-tunnus (like 1234567-8) first.") }}>
+              <input className={s.input} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Company name or Y-tunnus" enterKeyHint="search" autoComplete="organization" aria-label="Company name or Y-tunnus" />
+              <button className={s.go} disabled={!!busy}>Go</button>
+            </form>
+            {busy && (
+              <p className={s.busy} role="status">
+                <span className={s.spin} aria-hidden />
+                <span>{busy}</span>
+                <span className={s.secs}>{((Math.max(tick, t0) - t0) / 1000).toFixed(1)} s</span>
+              </p>
+            )}
+            {error && <p className={s.error} role="alert">{error}</p>}
+          </section>
+        </div>
 
-      {cap?.extracted && (
-        <p className="muted">Card: <b>{cap.extracted.company_name || "no company found"}</b>{cap.extracted.business_id && ` · ${cap.extracted.business_id}`}{cap.extracted.role && ` · ${cap.extracted.role}`}</p>
-      )}
-      {cap && !scout && cap.suggestions.length > 0 && list(`No active company called "${cap.q}". Did you mean…`, cap.suggestions)}
-      {cap && !cap.auto && !scout && cap.candidates.length > 0 && list(cap.suggestions.length ? "Other register matches" : "Which company?", cap.candidates)}
-      {cap && !scout && !cap.candidates.length && !cap.suggestions.length &&
-        <p className={s.error}>Nothing in the PRH register for &quot;{cap.q}&quot;. Check the spelling or try the Y-tunnus (it is printed on invoices and the company website).</p>}
-
-      {scout?.ceased && <section className={`${s.card} ${s.warn}`}><h2>{scout.company.name}: ceased</h2><p>{scout.message}</p></section>}
-
-      {b && scout && (
-        <section className={s.card}>
-          <div className={s.briefHead}>
-            <h2>{scout.company.name}</h2>
-            <small className="muted">{scout.brief!.word_count} words · {((total ?? scout.ms) / 1000).toFixed(1)} s{scout.mode === "evidence" && " · evidence-only"}</small>
-          </div>
-          {b.thin_data && <p className={s.tag}>thin data</p>}
-          {scout.note && <p className="muted"><small>{scout.note}</small></p>}
-          {scout.situations?.length ? <p className={s.error}>Register: {scout.situations.join(", ")}</p> : null}
-          <p>{b.what_they_do.text} <Chips c={b.what_they_do} /></p>
-          <h3>Signals</h3>
-          {b.signals.length ? <ul>{b.signals.map((c, i) => <li key={i}>{c.text} <Chips c={c} /></li>)}</ul> : <p className="muted">thin data</p>}
-          <h3>Openers</h3>
-          <ol>{b.openers.map((o, i) => <li key={i}>{o}</li>)}</ol>
-          <p><b>Don&apos;t say:</b> {b.dont_say}</p>
-          <p><b>Likely objection:</b> {b.objection.text} <Chips c={b.objection} /></p>
-          <SourceBox />
-        </section>
-      )}
-
-      {company && !scout?.ceased && (
-        <section className={s.card}>
-          <h2>Voice note · {company.name}</h2>
-          <p className="muted"><small>Role only, never names. Names are scrubbed before saving.</small></p>
-          <div className={s.row}>
-            <button onClick={toggleMic} className={listening ? s.rec : ""}>{listening ? "■ Stop" : "🎤 Record"}</button>
-            <select value={lang} onChange={(e) => setLang(e.target.value as typeof lang)} disabled={listening} aria-label="Language">
-              <option value="en-US">English</option><option value="fi-FI">Suomi</option>
-            </select>
-          </div>
-          {noteMsg && <p className={s.error} role="alert">{noteMsg}</p>}
-          <textarea value={transcript} onChange={(e) => setTranscript(e.target.value)} rows={4} placeholder="Transcript appears here. Edit before saving." />
-          <button disabled={!!busy || !transcript.trim()} onClick={saveLead}>Save lead</button>
-          {leads.length > 0 && (
-            <ul className={s.leads}>
-              {leads.map((l) => (
-                <li key={l.id}>
-                  <div><b>{l.role}</b> <span className={s.tag}>{l.temperature}</span><br />&ldquo;{l.quote}&rdquo;<br /><small className="muted">{l.pain}{l.next_step && ` → ${l.next_step}`}</small></div>
-                  <button className={s.del} onClick={() => del(l.id)} aria-label="Delete lead">Delete</button>
-                </li>
-              ))}
-            </ul>
+        <div className={s.results}>
+          {idle && (
+            <section className={s.empty} aria-labelledby="what">
+              <h2 id="what" className={s.h2}>What happens</h2>
+              <ol className={s.howto}>
+                <li><span><b>We read the card.</b> Only the company, its Y-tunnus and the job title. The photo is used for this one lookup and is not stored. Names are never kept.</span></li>
+                <li><span><b>We check public sources.</b> The Finnish trade register (PRH), public tenders (TED) and the company&apos;s own website.</span></li>
+                <li><span><b>You get a 120-word brief.</b> What they do, signals, openers and what not to say. Every line has a numbered source you can tap.</span></li>
+                <li><span><b>Record what they said.</b> Saved under their role, never their name. Overnight it becomes a one-page Velho draft that a person approves before it is shared.</span></li>
+              </ol>
+            </section>
           )}
-        </section>
-      )}
-    </main>
+
+          {busy?.startsWith("Researching") && !b && (
+            <section className={s.card} aria-hidden>
+              <div className={s.skel} style={{ width: "45%", height: 22 }} />
+              <div className={s.skel} /><div className={s.skel} /><div className={s.skel} style={{ width: "70%" }} />
+            </section>
+          )}
+
+          {cap?.extracted && (
+            <p className={s.extracted}>From the card: <b>{cap.extracted.company_name || "no company found"}</b>{cap.extracted.business_id && ` · ${cap.extracted.business_id}`}{cap.extracted.role && ` · ${cap.extracted.role}`}</p>
+          )}
+          {cap && !scout && cap.suggestions.length > 0 && list(`No active company called "${cap.q}". Did you mean…`, cap.suggestions)}
+          {cap && !cap.auto && !scout && cap.candidates.length > 0 && list(cap.suggestions.length ? "Other register matches" : "Which company?", cap.candidates)}
+          {cap && !scout && !cap.candidates.length && !cap.suggestions.length &&
+            <p className={s.error}>Nothing in the PRH register for &quot;{cap.q}&quot;. Check the spelling or try the Y-tunnus (it is printed on invoices and the company website).</p>}
+
+          {scout?.ceased && <section className={`${s.card} ${s.warn}`}><h2 className={s.h2}>Ceased</h2><p className={s.title}>{scout.company.name}</p><p>{scout.message}</p></section>}
+
+          {b && scout && (
+            <section className={s.card} aria-labelledby="brief">
+              <h2 id="brief" className={s.h2}>Brief</h2>
+              <p className={s.title}>{scout.company.name}</p>
+              <p className={s.meta}>
+                by Velho&apos;s AI analysts · {scout.brief!.word_count} words · {((total ?? scout.ms) / 1000).toFixed(1)} s{scout.mode === "evidence" && " · evidence-only"}
+                {b.thin_data && <span className={s.tag}>thin data</span>}
+              </p>
+              {scout.note && <p className={s.meta}>{scout.note}</p>}
+              {scout.situations?.length ? <p className={s.error}>Register: {scout.situations.join(", ")}</p> : null}
+              <p className={s.lead}>{b.what_they_do.text} <Chips c={b.what_they_do} /></p>
+              <h3 className={s.h3}>Signals</h3>
+              {b.signals.length ? <ul className={s.signals}>{b.signals.map((c, i) => <li key={i}>{c.text} <Chips c={c} /></li>)}</ul> : <p className={s.meta}>thin data</p>}
+              <h3 className={s.h3}>Openers</h3>
+              <ol className={s.openers}>{b.openers.map((o, i) => <li key={i}>{o}</li>)}</ol>
+              <dl className={s.dl}>
+                <div><dt>Don&apos;t say</dt><dd>{b.dont_say}</dd></div>
+                <div><dt>Likely objection</dt><dd>{b.objection.text} <Chips c={b.objection} /></dd></div>
+              </dl>
+              <SourceBox />
+            </section>
+          )}
+
+          {company && !scout?.ceased && (
+            <section className={s.card} aria-labelledby="voice">
+              <h2 id="voice" className={s.h2}>Voice note</h2>
+              <p className={s.title}>{company.name}</p>
+              <p className={s.meta}>Role only, never names. Names are scrubbed before saving.</p>
+              <div className={s.row}>
+                <button onClick={toggleMic} className={`${s.mic} ${listening ? s.rec : ""}`}>
+                  {listening ? <span className={s.dot} aria-hidden /> : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
+                  )}
+                  {listening ? "Stop" : "Record"}
+                </button>
+                <select className={s.select} value={lang} onChange={(e) => setLang(e.target.value as typeof lang)} disabled={listening} aria-label="Language">
+                  <option value="en-US">English</option><option value="fi-FI">Suomi</option>
+                </select>
+              </div>
+              {noteMsg && <p className={s.error} role="alert">{noteMsg}</p>}
+              <textarea className={s.input} value={transcript} onChange={(e) => setTranscript(e.target.value)} rows={4} placeholder="Transcript appears here. Edit before saving." aria-label="Voice note transcript" />
+              <button className={s.primary} disabled={!!busy || !transcript.trim()} onClick={saveLead}>Save lead</button>
+              {leads.length > 0 && (
+                <ul className={s.leads}>
+                  {leads.map((l) => (
+                    <li key={l.id}>
+                      <div>
+                        <p className={s.leadRole}>{l.role} <span className={s.tag}>{l.temperature}</span></p>
+                        <blockquote className={s.quote}>&ldquo;{l.quote}&rdquo;</blockquote>
+                        <p className={s.meta}>{l.pain}{l.next_step && ` → ${l.next_step}`}</p>
+                      </div>
+                      <button className={s.del} onClick={() => del(l.id)} aria-label="Delete lead">Delete</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
+        </div>
+      </main>
+    </div>
   )
 }

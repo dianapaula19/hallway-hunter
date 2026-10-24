@@ -149,6 +149,15 @@ Append-only, timestamped (Europe/Helsinki). Each entry covers: what we **asked**
     - `/P/<slug>` (capital P) is a 404, now the friendly one, rather than a redirect.
     - The server keeps running a scout after the client aborts, because `runAgent` takes no signal. That is a shared-kernel change.
     - Bahn items, which are another lane.
+- **Design pass on `/` and `/capture` (branch design-pass).**
+  - Asked: make the landing page and the capture screen match `/p` (serif headlines, calm palette, small-caps labels, chips), phone-first for the trade-fair demo, with no new dependency and no behaviour change on `/capture`.
+  - Changed:
+    - The `/p` palette is now a shared `.paper` class in `globals.css` (light and dark), used by `/` and `/capture`. `/p` and `/hq` are untouched.
+    - `/`: serif headline and a one-sentence promise, the CTA "Try it on any Finnish company", a 3-step flow (badge, cited brief in ~10 s, overnight page + audio approved by a person) with inline SVG icons, "Latest drafts" as cards (company, status in plain words, Helsinki time, "synthetic demo" tag), and a footer with the honesty notes and the `/hq` link. Same query, plus `created_at`.
+    - `/capture`: a "Who are you talking to?" title, a 76 px "Snap badge or card" button, "or type it", then the field. An empty state explains the four steps, including that the photo is used for one lookup and not stored (true: `/api/capture` keeps it in memory, and `runAgent` strips base64 from the step log). It also shows a spinner with elapsed seconds, a skeleton while researching, plain error boxes, and the brief, voice note and leads in the `/p` card and chip style. On desktop the input column is sticky on the left and results sit on the right. The "Velho draft" pill is gone from the internal header ("Internal · for Velho consultants"); the brief says "by Velho's AI analysts".
+    - All handlers, state, API calls and `withBase` uses are byte-identical (diffed lines 1-156 against the previous version: only a `Link` import was added).
+  - Checked: typecheck, check and build. Headless Chrome at 1440x900 and 390x844, light and dark: `/`, and `/capture` empty, loading (request held open) and network-error (request aborted). No horizontal overflow, and no tap target under 44 px (citation chips get a 44 px hit area through `::after`).
+  - Threw away: a fake brief to screenshot the result state (rule: no mocked data, and a real lookup calls PRH and the model), so the brief, voice and lead styling was only reviewed in code. A two-column hero with a sample brief, because it would have meant made-up content on the first page judges see.
 
 ## Eval (before / after)
 
