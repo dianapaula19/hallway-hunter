@@ -58,9 +58,11 @@ export async function extractLead(companyId: string, transcript: string): Promis
       x = r.json!
       redact(r.runId, x.names.length)
     } catch {
-      // Model down or slow: keep the regex-scrubbed note (same as no-key mode), and still redact the failed run's log.
+      // Model down or slow: redact the failed run's log and save nothing, so the user retries instead of getting a
+      // silent "unknown role" lead. (No key at all is a known offline mode and keeps the regex-scrubbed note.)
       const failed = get<{ id: string }>("SELECT id FROM agent_runs WHERE agent = 'lead_extract' AND subject_id = ? ORDER BY started_at DESC LIMIT 1", companyId)
       if (failed) redact(failed.id, 0)
+      throw new Error("Couldn't read the note right now, so nothing was saved. Your text is still here: try Save again in a moment.")
     }
   }
   const clip = (t: string, n: number) => stripNames(scrubNames(t ?? ""), x.names ?? []).slice(0, n)

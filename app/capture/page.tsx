@@ -21,9 +21,21 @@ async function shrink(file: File): Promise<Blob> {
   } catch { return file }
 }
 
-async function post<T>(url: string, body: BodyInit, json = true): Promise<T> {
-  const r = await fetch(withBase(url), { method: "POST", body, ...(json ? { headers: { "content-type": "application/json" } } : {}) })
-  return (await r.json()) as T
+async function post<T>(url: string, body: BodyInit, json = true, signal?: AbortSignal): Promise<T> {
+  const r = await fetch(withBase(url), { method: "POST", body, signal, ...(json ? { headers: { "content-type": "application/json" } } : {}) })
+  return (await r.json().catch(() => ({ error: `The server had a problem (HTTP ${r.status}). Try again.` }))) as T
+}
+
+// fetch() rejects with a bare "TypeError: Failed to fetch" when the network drops; say that in plain words.
+const plain = (e: unknown) => e instanceof TypeError ? "No connection to the server. Check the network and try again." : e instanceof Error ? e.message : String(e)
+const aborted = (e: unknown) => e instanceof DOMException && e.name === "AbortError"
+
+const MIC: Record<string, string> = {
+  "not-allowed": "The microphone is blocked. Allow it in the browser's site settings, or type the note below.",
+  "service-not-allowed": "The microphone is blocked. Allow it in the browser's site settings, or type the note below.",
+  "audio-capture": "No microphone found. Type the note below instead.",
+  "no-speech": "Didn't hear anything. Tap Record and speak closer to the phone, or type the note.",
+  network: "Speech recognition needs a network connection. Type the note below instead.",
 }
 
 type SR = { lang: string; interimResults: boolean; continuous: boolean; start(): void; stop(): void; onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null; onend: (() => void) | null; onerror: ((e: { error: string }) => void) | null }
@@ -42,8 +54,13 @@ export default function CapturePage() {
   const [listening, setListening] = useState(false)
   const [transcript, setTranscript] = useState("")
   const [leads, setLeads] = useState<Lead[]>([])
+  const [noteMsg, setNoteMsg] = useState<string | null>(null)
   const rec = useRef<SR | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  // One request in flight; leaving the page (or starting a new lookup) cancels it.
+  const ctl = useRef<AbortController | null>(null)
+  const fresh = () => { ctl.current?.abort(); ctl.current = new AbortController(); return ctl.current.signal }
+  useEffect(() => () => ctl.current?.abort(), [])
 
   useEffect(() => { if (!busy) return; const i = setInterval(() => setTick(Date.now()), 250); return () => clearInterval(i) }, [busy])
   const company = scout?.company ?? null
@@ -54,12 +71,12 @@ export default function CapturePage() {
     setLeads(((await r.json()) as { leads: Lead[] }).leads)
   }
 
-  function reset() { setError(null); setCap(null); setScout(null); setTotal(null); setOpen(null); setTranscript("") }
+  function reset() { setError(null); setCap(null); setScout(null); setTotal(null); setOpen(null); setTranscript(""); setNoteMsg(null) }
 
-  async function runScout(business_id: string, start = Date.now(), trigger: "auto_match" | "candidate_selected" = "candidate_selected") {
+  async function runScout(business_id: string, start = Date.now(), trigger: "auto_match" | "candidate_selected" = "candidate_selected", signal = fresh()) {
     setBusy("Researching (PRH, TED, website)…")
     try {
-      const r = await post<ScoutRes>("/api/scout", JSON.stringify({ business_id }))
+      const r = await post<ScoutRes>("/api/scout", JSON.stringify({ business_id }), true, signal)
       if (r.error) setError(r.error)
       else if (process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) {
         posthog.capture("company_scout_completed", {
@@ -68,16 +85,19 @@ export default function CapturePage() {
         })
       }
       setScout(r); setTotal(Date.now() - start)
-    } catch (e) { setError(String(e)) } finally { setBusy(null) }
+    } catch (e) { if (!aborted(e)) setError(plain(e)) } finally { if (!signal.aborted) setBusy(null) }
   }
 
+  // The current brief stays on screen until the new lookup succeeds, so a failed upload loses nothing.
   async function capture(body: FormData | string) {
-    reset()
+    const signal = fresh()
+    setError(null)
     const start = Date.now(); setT0(start)
     setBusy(typeof body === "string" ? "Looking up the trade register…" : "Reading the card…")
     try {
-      const r = await post<CaptureRes>("/api/capture", body, typeof body === "string")
+      const r = await post<CaptureRes>("/api/capture", body, typeof body === "string", signal)
       if (r.error) { setError(r.error); setBusy(null); return }
+      reset()
       if (process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) {
         posthog.capture("company_lookup_completed", {
           input_method: typeof body === "string" ? "typed_query" : "card_photo",
@@ -87,9 +107,9 @@ export default function CapturePage() {
         })
       }
       setCap(r)
-      if (r.auto) return await runScout(r.auto, start, "auto_match")
+      if (r.auto) return await runScout(r.auto, start, "auto_match", signal)
       setBusy(null)
-    } catch (e) { setError(String(e)); setBusy(null) }
+    } catch (e) { if (!aborted(e)) { setError(plain(e)); setBusy(null) } }
   }
 
   async function onPhoto(f: File | undefined) {
@@ -104,13 +124,14 @@ export default function CapturePage() {
     if (listening) { rec.current?.stop(); return }
     const W = window as unknown as { SpeechRecognition?: new () => SR; webkitSpeechRecognition?: new () => SR }
     const Ctor = W.SpeechRecognition ?? W.webkitSpeechRecognition
-    if (!Ctor) { setError("This browser has no speech recognition (try Chrome or Safari). Type the note instead."); return }
+    if (!Ctor) { setNoteMsg("This browser has no speech recognition (try Chrome or Safari). Type the note below instead."); return }
+    setNoteMsg(null)
     const r = new Ctor()
     r.lang = lang; r.interimResults = true; r.continuous = true
     const base = transcript ? transcript.trimEnd() + " " : ""
     r.onresult = (e) => setTranscript(base + Array.from(e.results).map((x) => x[0].transcript).join(" "))
     r.onend = () => setListening(false)
-    r.onerror = (e) => { setError(`Mic: ${e.error}`); setListening(false) }
+    r.onerror = (e) => { if (e.error !== "aborted") setNoteMsg(MIC[e.error] ?? `The microphone stopped (${e.error}). Type the note below instead.`); setListening(false) }
     rec.current = r; r.start(); setListening(true)
   }
 
@@ -119,11 +140,11 @@ export default function CapturePage() {
     setBusy("Saving lead (names scrubbed)…")
     try {
       const r = await post<{ lead?: Lead; error?: string }>("/api/lead", JSON.stringify({ company_id: company.id, transcript }))
-      if (r.error) setError(r.error); else {
+      if (r.error) setNoteMsg(r.error); else {
         if (process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) posthog.capture("lead_saved")
-        setTranscript(""); await loadLeads(company.id)
+        setTranscript(""); setNoteMsg(null); await loadLeads(company.id)
       }
-    } finally { setBusy(null) }
+    } catch (e) { setNoteMsg(`${plain(e)} Your note is still here.`) } finally { setBusy(null) }
   }
 
   async function del(id: string) {
@@ -181,9 +202,9 @@ export default function CapturePage() {
           📷 Snap badge or card
           <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden disabled={!!busy} onChange={(e) => onPhoto(e.target.files?.[0])} />
         </label>
-        <form className={s.row} onSubmit={(e) => { e.preventDefault(); if (q.trim()) void capture(JSON.stringify({ q })) }}>
+        <form className={s.row} onSubmit={(e) => { e.preventDefault(); if (q.trim()) void capture(JSON.stringify({ q })); else setError("Type a company name or a Y-tunnus (like 1234567-8) first.") }}>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Company name or Y-tunnus" enterKeyHint="search" autoComplete="organization" />
-          <button disabled={!!busy || !q.trim()}>Go</button>
+          <button disabled={!!busy}>Go</button>
         </form>
         {busy && <p className={s.busy} role="status">{busy} {((Math.max(tick, t0) - t0) / 1000).toFixed(1)} s</p>}
         {error && <p className={s.error} role="alert">{error}</p>}
@@ -221,7 +242,7 @@ export default function CapturePage() {
 
       {company && !scout?.ceased && (
         <section className={s.card}>
-          <h2>Voice note</h2>
+          <h2>Voice note · {company.name}</h2>
           <p className="muted"><small>Role only, never names. Names are scrubbed before saving.</small></p>
           <div className={s.row}>
             <button onClick={toggleMic} className={listening ? s.rec : ""}>{listening ? "■ Stop" : "🎤 Record"}</button>
@@ -229,6 +250,7 @@ export default function CapturePage() {
               <option value="en-US">English</option><option value="fi-FI">Suomi</option>
             </select>
           </div>
+          {noteMsg && <p className={s.error} role="alert">{noteMsg}</p>}
           <textarea value={transcript} onChange={(e) => setTranscript(e.target.value)} rows={4} placeholder="Transcript appears here. Edit before saving." />
           <button disabled={!!busy || !transcript.trim()} onClick={saveLead}>Save lead</button>
           {leads.length > 0 && (

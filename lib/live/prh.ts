@@ -169,12 +169,14 @@ export function prhExcerpt(p: ReturnType<typeof parseCompany>): string {
   ].filter(Boolean).join(" ")
 }
 
-// Upserts the company; adds a 'prh' source (cited by its API url) only when the record changed.
+// Upserts the company; adds a 'prh' source only when the record changed. It is fetched from the open-data API but
+// cited by the human YTJ page for the same Y-tunnus, so a reader who taps the chip gets a page, not raw JSON.
+const ytjUrl = (businessId: string) => `https://tietopalvelu.ytj.fi/yritys/${businessId}`
 export async function loadCompany(businessId: string): Promise<Company> {
   if (!YTUNNUS.test(businessId)) throw new Error(`not a Y-tunnus: ${businessId}`)
-  let url: string, companies: PrhCompany[]
+  let companies: PrhCompany[]
   try {
-    ({ url, companies } = await prhGet({ businessId }))
+    ({ companies } = await prhGet({ businessId }))
   } catch (e) {
     const stored = get<Company>("SELECT * FROM companies WHERE business_id = ? AND prh IS NOT NULL", businessId)
     if (stored && prhSource(stored.id)) return stored // PRH unreachable: reuse the record and source we already cite
@@ -193,7 +195,7 @@ export async function loadCompany(businessId: string): Promise<Company> {
   const excerpt = prhExcerpt(p)
   const prev = prhSource(co.id)
   // Keep the old id when nothing changed, so earlier citations stay valid.
-  if (!prev || prev.excerpt !== excerpt.slice(0, 600)) addSource({ company_id: co.id, kind: "prh", url, title: `PRH trade register: ${p.name}`, excerpt })
+  if (!prev || prev.excerpt !== excerpt.slice(0, 600)) addSource({ company_id: co.id, kind: "prh", url: ytjUrl(businessId), title: `PRH trade register: ${p.name}`, excerpt })
   return co
 }
 
