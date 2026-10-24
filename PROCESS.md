@@ -111,6 +111,14 @@ Append-only, timestamped (Europe/Helsinki). Each entry covers: what we **asked**
     - The rule that the script cites 2 public sources. It produced "We checked this against the trade register and your website" and "Valmet is a global technology leader…" lines, which the skeptic called filler or surveillance every time. Public sources are now cited only where they add a fact.
     - Changing the skeptic's persona or bar. We changed only what described the old product ("exactly 3 cards", "book 20 minutes") and the per-person hours label.
   - Not checked: speech playback on a real phone. Stop is 5-6: a cold page labelled as AI is opened warily, and the house rules keep that label.
+- **~18:00 judge pass.** Clicked through `/`, `/capture` (live: "Tokmanni" → PRH → scout brief with 2 TED signals in 6.6 s, one model call), `/hq` and both `/p` pages at 1440 and 390 px. The five things a judge sees in 30 s:
+  1. `/` was a two-link dev index: no pitch and no route to an output. **Fixed:** a three-sentence pitch, "Try it on any Finnish company", and the newest non-killed draft per company.
+  2. `/p` cited only the hallway note, although PRH, site and TED rows sat in the store, so "every statement links to its source" showed one source, the quote itself. The skeptic also asked whether "Valmet Oyj" was the right entity. **Fixed:** the byline carries the Y-tunnus, cited to the PRH trade-register row.
+  3. "One question" was a 60-90 word paragraph. **Fixed:** the question sentence is shown large, and the terms after it are small print. The text itself is unchanged.
+  4. `/hq` lists four superseded Konecranes drafts, one still marked blocked from before the compliance fix, and every title reads "below bar". **Not fixed:** that is data, not code. Kill them in `/hq` or reset the DB (README). We did not make approval decisions for the reviewer.
+  5. The Valmet card's €5,800 rests on the researcher's guess of "one visit a week". **Not fixed:** it needs another live night run.
+  - Checked: typecheck, check, build, and the live, sanitize and compliance self-checks. Screenshots after the fix show no horizontal overflow at 390 px.
+  - Considered and skipped: a cited "what they do" line from the site excerpt under the title. It would read as the "Valmet is a global technology leader…" filler the skeptic marked down.
 
 ## Eval (before / after)
 

@@ -86,6 +86,7 @@
 .ask { margin-top: 48px; padding: 4px 0 4px 22px; border-left: 2px solid var(--accent); }
 .ask .h2 { margin-bottom: 10px; }
 .askText { margin: 0; font: 400 clamp(19px, 3.6vw, 22px)/1.45 var(--serif); }
+.askTerms { margin: 10px 0 0; font-size: 15px; color: var(--muted); }
 
 .formula { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
 .eur { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -.01em; font-variant-numeric: tabular-nums; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }

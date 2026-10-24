@@ -19,13 +19,15 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
   const sources = new Map(all<Source>("SELECT * FROM sources WHERE company_id = ?", company.id).map((x) => [x.id, x]))
 
   const showQuote = lead && !isConfidential(lead)
+  // The trade-register row ties the page to the right legal entity with a public source.
+  const prh = [...sources.values()].find((x) => x.kind === "prh")
   const hallway = showQuote ? [...sources.values()].find((x) => x.kind === "hallway" && x.lead_id === lead.id) : undefined
   // A script line citing a hidden (confidential) hallway source is not shown either.
   const script = page.script.filter((l) => showQuote || !l.source_ids.some((id) => sources.get(id)?.kind === "hallway"))
 
   // Number citations in reading order: quote, cards, script.
   const order: string[] = []
-  for (const id of [hallway?.id, ...opps.flatMap((o) => o.claim.source_ids), ...opps.flatMap((o) => o.formula.input_source_ids), ...script.flatMap((l) => l.source_ids)])
+  for (const id of [prh?.id, hallway?.id, ...opps.flatMap((o) => o.claim.source_ids), ...opps.flatMap((o) => o.formula.input_source_ids), ...script.flatMap((l) => l.source_ids)])
     if (id && sources.has(id) && !order.includes(id)) order.push(id)
   const cited = order.map((id, i) => ({ n: i + 1, ...sources.get(id)! }))
   const num = Object.fromEntries(cited.map((c) => [c.id, c.n]))
@@ -34,6 +36,8 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
   const date = new Date(page.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
   // The script's closing question is the page's one ask; show it on its own, not only inside the audio.
   const ask = script.at(-1)?.text.includes("?") ? script.at(-1) : undefined
+  // Lead with the question itself; the terms after it are small print, not a second paragraph to wade through.
+  const q = ask ? ask.text.indexOf("?") + 1 : 0
 
   return (
     <div className={s.page}>
@@ -44,7 +48,9 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
         </header>
 
         <h1 className={s.h1}>Made for {name}</h1>
-        <p className={s.byline}>A Velho draft, by Velho&apos;s AI analysts · {date}</p>
+        <p className={s.byline}>A Velho draft, by Velho&apos;s AI analysts · {date}
+          {prh && company.business_id && <> · Y-tunnus {company.business_id} <Chips ids={[prh.id]} num={num} /></>}
+        </p>
 
         {showQuote && (
           <figure className={s.quote}>
@@ -73,7 +79,8 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
         {ask && (
           <section className={s.ask} aria-labelledby="ask">
             <h2 id="ask" className={s.h2}>One question</h2>
-            <p className={s.askText}>{ask.text}</p>
+            <p className={s.askText}>{ask.text.slice(0, q)}</p>
+            {ask.text.slice(q).trim() && <p className={s.askTerms}>{ask.text.slice(q).trim()}</p>}
           </section>
         )}
 
