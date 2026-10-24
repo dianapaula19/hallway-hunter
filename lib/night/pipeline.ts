@@ -47,20 +47,29 @@ const savePage = (pageId: string, fields: Record<string, unknown>) => {
   run(`UPDATE pages SET ${keys.map((k) => `${k} = ?`).join(", ")} WHERE id = ?`, ...keys.map((k) => fields[k]), pageId)
 }
 
-export async function runNightPath(companyId: string, leadId?: string | null): Promise<{ page_id: string; slug: string }> {
+// Starts the night path and returns at once; `done` settles when it finishes. A "night_path" run (subject = page id)
+// wraps the stages so /hq can show running / ok / error, and a crash is recorded there instead of escaping.
+export function startNightPath(companyId: string, leadId?: string | null): { page_id: string; slug: string; done: Promise<{ page_id: string; slug: string }> } {
   const ctx = loadContext(companyId, leadId)
   const pageId = uid("page")
   const slug = uid("p")
   insert("pages", { id: pageId, slug, company_id: companyId, lead_id: ctx.lead?.id ?? null, status: "draft", script: [], skeptic: [], created_at: now() })
-  try {
-    await build(ctx, pageId, slug)
-  } catch (e) {
-    // A half-built page is useless; drop it (runs stay logged) so cron retries the lead next time.
-    run("DELETE FROM pages WHERE id = ?", pageId)
-    throw e
-  }
-  return { page_id: pageId, slug }
+  const runId = startRun("night_path", pageId, "pipeline")
+  const done = build(ctx, pageId, slug).then(
+    () => { endRun(runId, "ok", `/p/${slug}`); return { page_id: pageId, slug } },
+    (e) => {
+      const msg = e instanceof Error ? e.message : String(e)
+      try {
+        // A half-built page is useless; drop it (runs stay logged) so cron retries the lead next time.
+        run("DELETE FROM pages WHERE id = ?", pageId)
+        endRun(runId, "error", null, msg)
+      } catch { /* the DB itself failed; nothing left to record into */ }
+      throw e
+    })
+  return { page_id: pageId, slug, done }
 }
+
+export const runNightPath = (companyId: string, leadId?: string | null) => startNightPath(companyId, leadId).done
 
 async function build(ctx: NightContext, pageId: string, slug: string) {
   const companyId = ctx.company.id

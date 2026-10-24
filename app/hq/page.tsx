@@ -26,6 +26,7 @@ export default function HQ() {
   const [lead, setLead] = useState("")
   const [busy, setBusy] = useState("")
   const [msg, setMsg] = useState("")
+  const [job, setJob] = useState<{ pageId: string; slug: string; name?: string } | null>(null) // night path started, not yet finished
 
   useEffect(() => {
     let alive = true
@@ -44,17 +45,27 @@ export default function HQ() {
     const co = company || b?.companies[0]?.id
     if (!co) return
     const name = b?.companies.find((c) => c.id === co)?.name
-    setBusy("night"); setMsg(`Night path running for ${name}… watch the runs below.`)
+    setBusy("night"); setMsg(`Starting the night path for ${name}…`)
     try {
+      // 202 at once; the path itself runs 23-41 s server-side and the board poll below picks up the result.
       const r = await fetch(withBase("/api/night"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ company_id: co, lead_id: lead || undefined }) })
       const j = await r.json()
-      if (r.ok && process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) {
-        posthog.capture("night_path_completed", { has_selected_lead: Boolean(lead) })
-      }
-      setMsg(r.ok ? `Done: the ${name} page /p/${j.slug} is waiting for approval.` : `Failed: ${j.error}`)
-    } catch { setMsg("Failed: lost the connection to the server. Check the runs below before running again.") }
-    setBusy("")
+      if (!r.ok) { setMsg(`Could not start: ${j.error}`); setBusy(""); return }
+      setJob({ pageId: j.page_id, slug: j.slug, name })
+      setMsg(`Night path running for ${name} (usually 25-40 s)… watch the runs below.`)
+    } catch { setMsg("Could not start: lost the connection to the server. Check the runs below before running again."); setBusy("") }
   }
+
+  // Finish the job when its "night_path" run (subject = page id) shows up as ended in the polled board.
+  const jobRun = job ? b?.runs.find((r) => r.agent === "night_path" && r.subject_id === job.pageId) : undefined
+  useEffect(() => {
+    if (!job || !jobRun || jobRun.status === "running") return
+    if (jobRun.status === "ok") {
+      if (process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) posthog.capture("night_path_completed", { has_selected_lead: Boolean(lead) })
+      setMsg(`Done: the ${job.name} page /p/${job.slug} is waiting for approval.`)
+    } else setMsg(`Failed: the night path for ${job.name} stopped and no page was kept. Reason: ${jobRun.error ?? "unknown"}. Nothing was sent.`)
+    setJob(null); setBusy("")
+  }, [job, jobRun, lead])
 
   const leads = b?.leads.filter((l) => l.company_id === (company || b?.companies[0]?.id)) ?? []
 

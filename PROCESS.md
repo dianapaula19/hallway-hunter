@@ -168,6 +168,12 @@ Append-only, timestamped (Europe/Helsinki). Each entry covers: what we **asked**
   - Checked: typecheck, check and build. Headless Chrome at 1440x900 and 390x844, light and dark: `/`, and `/capture` empty, loading (request held open) and network-error (request aborted). No horizontal overflow, and no tap target under 44 px (citation chips get a 44 px hit area through `::after`).
   - Threw away: a fake brief to screenshot the result state (rule: no mocked data, and a real lookup calls PRH and the model), so the brief, voice and lead styling was only reviewed in code. A two-column hero with a sample brief, because it would have meant made-up content on the first page judges see.
 
+- **Matrix gateway 30 s cap: night path is now start + poll.**
+  - Asked: on Matrix OS the gateway aborts any proxied request after 30 s (504). `POST /api/night` held the request open for the whole night path (23-41 s), so "Run night path now" 504'd there. The work itself was not tied to the request (nothing passes `req.signal` down), so it usually finished server-side, but /hq showed a failure.
+  - Changed: `startNightPath()` in `lib/night/pipeline.ts` inserts the page, opens a `night_path` run (subject = page id) and returns at once; `runNightPath()` (cron) just awaits its `done`. `POST /api/night` returns 202 `{page_id, slug}` and keeps the job alive with `after()`. A crash deletes the half-built page and ends the `night_path` run as `error` with the message, so there is no unhandled rejection. /hq watches that run in its existing 2 s poll: running, then "Done: … /p/<slug> is waiting for approval" or "Failed: … Reason: …". Budgets and gates are unchanged.
+  - Checked the other routes against `agent_runs` history: capture (vision max 2.8 s), scout (max 7.1 s, p50 8.4 s client-side), lead (max 3.6 s), approvals (no model call). All stay well under 25 s, so they are left synchronous.
+  - Checked: typecheck, check, build; one real night path on the synthetic Ponsse lead through /hq in headless Chrome. `POST /api/night` 202 in 59 ms, slowest `/api/hq` poll 105 ms; the path finished in 24.2 s and the test page was killed from /hq.
+
 ## Eval (before / after)
 
 | Metric | Before | After | How measured |

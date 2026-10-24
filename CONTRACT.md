@@ -87,7 +87,7 @@ lib/night/**                   sanitize.ts (SHIP FIRST, LIVE imports it), resear
                                skeptic.ts, compliance.ts, pipeline.ts
 app/p/[slug]/**                private page + client components (formula editor, two-voice player)
 app/hq/**                      board (client, polls /api/hq every 2s)
-app/api/night/route.ts         POST {company_id, lead_id?} → runNightPath, returns {page_id, slug} when done
+app/api/night/route.ts         POST {company_id, lead_id?} → startNightPath in background, 202 {page_id, slug}; /hq polls the night_path run
 app/api/hq/route.ts            GET → {runs (last 20 + steps), approvals PENDING, outbox, pages}
 app/api/approvals/[id]/route.ts POST {action: approve|edit|kill, note?, final_payload?}
 scripts/night.ts               cron entry: every lead from the last 24h without a page → runNightPath
