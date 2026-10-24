@@ -12,7 +12,16 @@ export const metadata: Metadata = { title: "Velho draft", robots: { index: false
 export default async function DraftPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
   const page = get<Page>("SELECT * FROM pages WHERE slug = ?", slug)
-  if (!page || page.status === "killed") notFound()
+  if (!page) notFound()
+  if (page.status === "killed") return (
+    <div className={s.page}>
+      <main className={s.wrap}>
+        <header className={s.top}><span className={s.pill}>Velho draft</span></header>
+        <h1 className={s.h1}>This draft has been withdrawn</h1>
+        <p className={s.byline}>Velho took this page down. If you were expecting it, reply to the person at Velho who sent you the link.</p>
+      </main>
+    </div>
+  )
   const company = get<Company>("SELECT * FROM companies WHERE id = ?", page.company_id)!
   const lead = page.lead_id ? get<Lead>("SELECT * FROM leads WHERE id = ?", page.lead_id) ?? null : null
   const opps = all<Opportunity>("SELECT * FROM opportunities WHERE page_id = ? ORDER BY position", page.id)
@@ -44,7 +53,7 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
       <main className={s.wrap}>
         <header className={s.top}>
           <span className={s.pill}>Velho draft</span>
-          <span className={s.meta}>Private page · not indexed{synthetic ? " · synthetic demo data" : ""}{page.status !== "approved" ? " · awaiting human review" : ""}</span>
+          <span className={s.meta}>Private page · not indexed{synthetic ? " · synthetic demo data" : ""}</span>
         </header>
 
         <h1 className={s.h1}>Made for {name}</h1>

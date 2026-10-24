@@ -1,7 +1,7 @@
 "use client"
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import posthog from "posthog-js"
-import { eurPerYear, fmtEur, FORMULA_INPUTS, type FormulaKey } from "@/lib/night/formula.ts"
+import { clampInput, eurPerYear, fmtEur, FORMULA_INPUTS, type FormulaKey } from "@/lib/night/formula.ts"
 import type { EuroFormula, ScriptLine } from "@/lib/types.ts"
 import s from "./page.module.css"
 
@@ -21,7 +21,12 @@ export function Chips({ ids, num }: { ids: string[]; num: Record<string, number>
 // Editable estimate: every input visible, recomputed in the browser.
 export function FormulaRow({ formula, chips }: { formula: EuroFormula; chips: ReactNode }) {
   const [f, setF] = useState(formula)
-  const set = (k: FormulaKey, v: string) => setF((p) => ({ ...p, [k]: Math.max(0, Number(v) || 0) }))
+  // Inputs are uncontrolled so a half-typed "2." or "-" stays as typed; only a valid number updates the estimate.
+  const shown = (k: FormulaKey, v: number) => String(k === "automation_share" ? Math.round(v * 100) : v)
+  const set = (k: FormulaKey, raw: string) => {
+    const n = raw.trim() === "" ? NaN : Number(raw) / (k === "automation_share" ? 100 : 1)
+    if (Number.isFinite(n)) setF((p) => ({ ...p, [k]: clampInput(k, n) }))
+  }
   return (
     <div className={s.formula}>
       <p className={s.eur}>
@@ -36,9 +41,10 @@ export function FormulaRow({ formula, chips }: { formula: EuroFormula; chips: Re
               {i > 0 && <span className={s.op} aria-hidden>×</span>}
               <label>
                 <input
-                  type="number" inputMode="decimal" min={0} max={pct ? 100 : undefined} step={pct ? 5 : inp.step}
-                  value={pct ? Math.round(f[inp.key] * 100) : f[inp.key]}
-                  onChange={(e) => set(inp.key, pct ? String(Math.min(100, Number(e.target.value)) / 100) : e.target.value)}
+                  type="number" inputMode="decimal" min={0} max={pct ? 100 : inp.max} step={pct ? 5 : inp.step}
+                  defaultValue={shown(inp.key, f[inp.key])}
+                  onChange={(e) => set(inp.key, e.target.value)}
+                  onBlur={(e) => { e.currentTarget.value = shown(inp.key, f[inp.key]) }}
                 />
                 <span>{pct ? "% automatable" : inp.label}</span>
               </label>
@@ -95,11 +101,16 @@ export function Player({ lines, num }: { lines: ScriptLine[]; num: Record<string
     u.pitch = v.same ? (l.host === "A" ? 0.9 : 1.25) : 1
     u.rate = 1.02
     u.onend = () => speak(i + 1, g)
+    // A browser with the API but no working engine errors out instead of ending: fall back to the transcript.
+    u.onerror = (e) => { if (g === gen.current && e.error !== "interrupted" && e.error !== "canceled") noAudio() }
     synth.speak(u)
   }
 
+  const noAudio = () => { gen.current++; window.speechSynthesis.cancel(); setSupported(false); setState("idle"); setCur(-1); setShowText(true) }
+
   const start = (from: number) => {
     const synth = window.speechSynthesis
+    if (!synth.getVoices().length) return noAudio() // no voices installed: speak() would hang on line 1
     const g = ++gen.current
     if (process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) {
       posthog.capture("briefing_started", { start_position: from + 1 })

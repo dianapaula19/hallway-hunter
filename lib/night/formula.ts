@@ -1,19 +1,22 @@
 // Euro estimate (hard rule 5). Pure: imported by the server pipeline AND the client formula editor.
 import type { EuroFormula } from "../types.ts"
 
+// max: the same cap applies to model output (normalizeFormula) and to what a viewer types (clampInput).
 export const FORMULA_INPUTS = [
-  { key: "hours_per_week", label: "hours / week each", step: 0.5 },
-  { key: "people", label: "people", step: 1 },
-  { key: "weeks_per_year", label: "weeks / year", step: 1 },
-  { key: "hourly_cost_eur", label: "€ / hour", step: 1 },
-  { key: "automation_share", label: "automation share", step: 0.05 },
+  { key: "hours_per_week", label: "hours / week each", step: 0.5, max: 80, dflt: 2 },
+  { key: "people", label: "people", step: 1, max: 10000, dflt: 1 },
+  { key: "weeks_per_year", label: "weeks / year", step: 1, max: 52, dflt: 46 },
+  { key: "hourly_cost_eur", label: "€ / hour", step: 1, max: 500, dflt: 45 },
+  { key: "automation_share", label: "automation share", step: 0.05, max: 1, dflt: 0.3 },
 ] as const
 
 export type FormulaKey = (typeof FORMULA_INPUTS)[number]["key"]
 
-const num = (v: unknown, lo: number, hi: number, dflt: number) => {
-  const n = Number(v)
-  return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt
+// Clamp to [0, max]; not a finite number (NaN, "", "12e") -> dflt.
+export function clampInput(key: FormulaKey, v: unknown, dflt?: number): number {
+  const inp = FORMULA_INPUTS.find((x) => x.key === key)!
+  const n = v === "" || v == null ? NaN : Number(v)
+  return Number.isFinite(n) ? Math.min(inp.max, Math.max(0, n)) : dflt ?? inp.dflt
 }
 
 export function eurPerYear(f: Pick<EuroFormula, FormulaKey>): number {
@@ -24,11 +27,11 @@ export function eurPerYear(f: Pick<EuroFormula, FormulaKey>): number {
 export function normalizeFormula(raw: Partial<EuroFormula>, known: Set<string>): EuroFormula {
   const ids = (raw.input_source_ids ?? []).filter((id) => known.has(id))
   return {
-    hours_per_week: num(raw.hours_per_week, 0, 80, 2),
-    people: num(raw.people, 0, 10000, 1),
-    weeks_per_year: num(raw.weeks_per_year, 0, 52, 46),
-    hourly_cost_eur: num(raw.hourly_cost_eur, 0, 500, 45),
-    automation_share: num(raw.automation_share, 0, 1, 0.3),
+    hours_per_week: clampInput("hours_per_week", raw.hours_per_week),
+    people: clampInput("people", raw.people),
+    weeks_per_year: clampInput("weeks_per_year", raw.weeks_per_year),
+    hourly_cost_eur: clampInput("hourly_cost_eur", raw.hourly_cost_eur),
+    automation_share: clampInput("automation_share", raw.automation_share),
     input_source_ids: ids,
     label: ids.length ? "estimate" : "sector estimate",
   }

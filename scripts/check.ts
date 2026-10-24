@@ -23,5 +23,13 @@ assert.throws(() => run("UPDATE outbox SET status = 'sent'"))
 // briefs over 120 words are rejected by the DB
 assert.throws(() => insert("briefs", { id: "b_t", company_id: "co_t", brief: {}, word_count: 121, created_at: now() }))
 
+// formula inputs: the browser editor and the model output share one cap; junk falls back instead of becoming 0
+const { clampInput } = await import("../lib/night/formula.ts")
+assert.equal(clampInput("people", 99999999999), 10000)
+assert.equal(clampInput("hours_per_week", -5), 0)
+assert.equal(clampInput("hours_per_week", "", 2.5), 2.5)
+assert.equal(clampInput("hours_per_week", "12e", 2.5), 2.5)
+assert.equal(clampInput("automation_share", 2), 1)
+
 rmSync("data/check.db", { force: true }); rmSync("data/check.db-wal", { force: true }); rmSync("data/check.db-shm", { force: true })
 console.log("check ok")
