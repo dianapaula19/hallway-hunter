@@ -1,25 +1,72 @@
-:root { --bg: #fafaf8; --fg: #1b1b1b; --muted: #6b6b6b; --line: #e3e3de; --accent: #2a5bd7; }
-@media (prefers-color-scheme: dark) { :root { --bg: #141414; --fg: #ececec; --muted: #9a9a9a; --line: #2c2c2c; --accent: #7aa2ff; } }
+/* One brand system for /, /capture, /hq and /p. Fonts are self-hosted (public/fonts, OFL). Relative url()s so the
+   bundler hashes them under /_next and basePath (Matrix OS) keeps working. */
+@font-face { font-family: "Source Serif 4"; font-style: normal; font-weight: 200 900; font-display: swap;
+  src: url("../public/fonts/source-serif-4-latin-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Source Serif 4"; font-style: normal; font-weight: 200 900; font-display: swap;
+  src: url("../public/fonts/source-serif-4-latin-ext-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Source Serif 4"; font-style: italic; font-weight: 200 900; font-display: swap;
+  src: url("../public/fonts/source-serif-4-latin-wght-italic.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Source Serif 4"; font-style: italic; font-weight: 200 900; font-display: swap;
+  src: url("../public/fonts/source-serif-4-latin-ext-wght-italic.woff2") format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Source Sans 3"; font-style: normal; font-weight: 200 900; font-display: swap;
+  src: url("../public/fonts/source-sans-3-latin-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Source Sans 3"; font-style: normal; font-weight: 200 900; font-display: swap;
+  src: url("../public/fonts/source-sans-3-latin-ext-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+
+/* Tokens. Palette = the /p letterpress palette; --velho is the one brand accent (navy, placeholder until Velho's
+   real brand). Older names (--bg --fg --accent --serif ...) are kept as aliases so existing pages keep working. */
+:root {
+  --font-serif: "Source Serif 4", Georgia, "DejaVu Serif", serif;
+  --font-sans: "Source Sans 3", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --serif: var(--font-serif);
+
+  --paper: #f6f5f1; --card: #ffffff; --ink: #1d211f; --soft: #4a504c; --muted: #6f746f; --line: #e3e1da;
+  --velho: #22506e; --accent: var(--velho); --accent-soft: #e6eef3; --on-accent: #ffffff;
+  --warn: #a3352a; --warn-soft: #f8e9e6; --ok: #2f7a4b; --wait: #b07a1e;
+  --bg: var(--paper); --fg: var(--ink);
+
+  /* type scale (px, 17 base) */
+  --text-xs: 12px; --text-sm: 14px; --text-md: 15px; --text-base: 17px; --text-lg: 19px; --text-xl: 24px;
+  --text-2xl: clamp(28px, 5vw, 36px); --text-3xl: clamp(32px, 6vw, 48px);
+  --label: 600 12px/1.4 var(--font-sans); /* small caps labels: pair with letter-spacing .1em + uppercase */
+
+  --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px; --radius-pill: 999px;
+
+  /* layout: every page's header sits on the same left edge (container), reading text stays at the measure */
+  --container: 1120px; --measure: 680px; --gutter: 16px;
+}
+@media (min-width: 760px) { :root { --gutter: 24px; } }
+@media (min-width: 1024px) { :root { --gutter: 32px; } }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #131615; --card: #1a1e1c; --ink: #e9ebe8; --soft: #b9beba; --muted: #8e948f; --line: #2a2f2c;
+    --velho: #8fb8d4; --accent-soft: #1d2a33; --on-accent: #0f1418; --warn: #f0a196; --warn-soft: #2e1d1a; --ok: #8fd4a2; --wait: #e2b86a;
+  }
+}
+
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: var(--text-base)/1.6 var(--font-sans); -webkit-font-smoothing: antialiased; }
 main { max-width: 860px; margin: 0 auto; padding: 24px 16px; }
 a { color: var(--accent); }
 .muted { color: var(--muted); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
 
-/* The /p palette (see app/p/[slug]/page.module.css), shared by / and /capture. */
-.paper {
-  --paper: #f6f5f1; --card: #ffffff; --ink: #1d211f; --soft: #4a504c; --muted: #6f746f;
-  --line: #e3e1da; --accent: #22506e; --accent-soft: #e6eef3; --on-accent: #ffffff; --warn: #a3352a; --warn-soft: #f8e9e6;
-  --serif: "Iowan Old Style", "Charter", "Bitstream Charter", "Source Serif 4", "Source Serif Pro", Georgia, "DejaVu Serif", serif;
-  min-height: 100vh; background: var(--paper); color: var(--ink);
-  font: 17px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  -webkit-font-smoothing: antialiased;
-}
-@media (prefers-color-scheme: dark) {
-  .paper {
-    --paper: #131615; --card: #1a1e1c; --ink: #e9ebe8; --soft: #b9beba; --muted: #8e948f;
-    --line: #2a2f2c; --accent: #8fb8d4; --accent-soft: #1d2a33; --on-accent: #0f1418; --warn: #f0a196; --warn-soft: #2e1d1a;
-  }
-}
+/* Same width and left edge on every page: max-width = container + gutters. */
+.container { width: 100%; max-width: calc(var(--container) + 2 * var(--gutter)); margin-inline: auto; padding-inline: var(--gutter); }
+
+/* Kept for / and /capture: tokens now live on :root, so .paper only sets the page surface. */
+.paper { min-height: 100vh; background: var(--paper); color: var(--ink); font: var(--text-base)/1.6 var(--font-sans); -webkit-font-smoothing: antialiased; }
 .paper a { color: var(--accent); }
-.paper :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+
+/* Wordmark (app/wordmark.tsx): placeholder typographic identity, NOT Velho's logo. See PROCESS.md. */
+.wordmark { display: inline-flex; align-items: center; gap: 12px; min-height: 44px; text-decoration: none; color: var(--ink); }
+a.wordmark, .paper a.wordmark { color: var(--ink); }
+.wordmark-name { font: 600 24px/1 var(--font-serif); letter-spacing: -.02em; }
+.wordmark-name::after { content: ""; display: inline-block; width: .22em; height: .22em; margin-left: .06em; border-radius: 50%; background: var(--velho); }
+.wordmark-product { font: var(--label); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding-left: 12px; border-left: 1px solid var(--line); line-height: 18px; }
