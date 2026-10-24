@@ -4,6 +4,7 @@
   "listingTrust": "first_party",
   "description": "Velho: hallway photo or name to a cited brief, overnight 'Velho draft' pages that wait for human approval. Synthetic demo data.",
   "category": "productivity",
+  "icon": "hallway-hunter",
   "author": "hackathon-04",
   "version": "0.1.0",
   "runtime": "node",

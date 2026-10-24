@@ -38,6 +38,7 @@ run matrix upload --force --secret "$TMP/env.local" projects/hallway-hunter/.env
 box 'cd projects/hallway-hunter && setsid nohup sh -c "set -e; set -a; . ./.env.local; set +a; npm ci --no-audit --no-fund; npm run build; echo SETUP_DONE" > ../hh-setup.log 2>&1 < /dev/null &'
 echo "wait for SETUP_DONE:  matrix run -C . -- tail -3 projects/hh-setup.log"
 
+run matrix upload --force "$REPO/matrix/icon.png" system/icons/hallway-hunter.png   # launcher icon (manifest "icon": "hallway-hunter")
 run matrix upload --force "$REPO/matrix/matrix.json" apps/hallway-hunter/matrix.json
 
 # 5. Velho's background agent: 22:00 Helsinki night path for the day's leads, 07:30 digest (printed to the
