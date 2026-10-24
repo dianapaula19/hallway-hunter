@@ -37,6 +37,9 @@ export default function HQ() {
   const [msg, setMsg] = useState("")
   const [job, setJob] = useState<{ pageId: string; slug: string; name?: string } | null>(null) // night path started, not yet finished
 
+  // /capture links here with ?company=<id> after a note is saved, so the run panel opens on that company.
+  useEffect(() => { const c = new URLSearchParams(location.search).get("company"); if (c) setCompany(c) }, [])
+
   useEffect(() => {
     let alive = true
     const tick = async () => {
@@ -61,7 +64,7 @@ export default function HQ() {
       const j = await r.json()
       if (!r.ok) { setMsg(`Could not start: ${j.error}`); setBusy(""); return }
       setJob({ pageId: j.page_id, slug: j.slug, name })
-      setMsg(`Night path running for ${name} (usually 25-40 s)… watch the runs below.`)
+      setMsg(`Night path running for ${name} (usually 20-30 s)… watch the runs below.`)
     } catch { setMsg("Could not start: lost the connection to the server. Check the runs below before running again."); setBusy("") }
   }
 
@@ -127,14 +130,14 @@ export default function HQ() {
         <aside className={s.side}>
           <section className={s.card}>
             <h2 className={s.h2}>Run the night path now</h2>
-            <p className={s.muted}>Research, audio script and checks for one company with a hallway note. Takes 25-40 s.</p>
+            <p className={s.muted}>Research, audio script and checks for one company with a hallway note. Takes about 20-30 s. Only companies with a saved note are listed: the page costs the task someone described.</p>
             {b && !b.companies.length && <p className={s.muted}>No hallway notes yet. Save a voice note on /capture first.</p>}
             <div className={s.form}>
               <select className={s.field} value={company} disabled={!!busy} aria-label="Company" onChange={(e) => { setCompany(e.target.value); setLead("") }}>
                 {b?.companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               <select className={s.field} value={lead} disabled={!!busy} aria-label="Lead" onChange={(e) => setLead(e.target.value)}>
-                <option value="">Latest lead (or none)</option>
+                <option value="">Latest note</option>
                 {leads.map((l) => <option key={l.id} value={l.id}>{l.role} · {when(l.created_at)}</option>)}
               </select>
               <select className={s.field} value={recipient} disabled={!!busy} aria-label="Who the page is for" onChange={(e) => setRecipient(e.target.value)}>

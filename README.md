@@ -65,8 +65,9 @@ Model: `ANTHROPIC_MODEL`, default `claude-sonnet-5-5`. Every call goes through `
    - a small private Oy with no tenders: the brief is marked **thin data** and is not padded;
    - nonsense: "Nothing in the PRH register", with a hint to use the Y-tunnus.
 4. **Voice note (main path, rehearse it).** Speak a short, made-up note about the judge's company in Finnish or English ("their two buyers retype supplier PDFs every morning"), edit the transcript and save. "Demo note" is ticked by default, so every page labels the quote "invented for this demo; nobody at <company> said this". The lead shows a role, a quote, the pain point and a temperature, with no name. Show the delete button.
-   - Without a note the night path still runs, but the page is only "What we'd ask you" questions from TED and the company site, and it reads weak: Tokmanni with no lead scored stop 3, read 4, reply 2. Always record the note.
-5. **`/hq` → Run night path now** on that lead, "For the COO" (or CEO, CFO, the person met). The board fills live: a size fact from the company's own site, researcher, showrunner, skeptic (reading as that executive, one rewrite), then compliance. It took 18-25 s on 2026-10-24.
+   - Type their job title in the field under the note if the note does not say it (a badge photo fills it in). Without one the page says "unknown role".
+   - **No note, no page.** "Run" on /hq lists only companies with a saved note, and `/api/night` answers 400 with the reason: the page costs the task someone described. A page without a note is only questions from the public record and read weak (Tokmanni: stop 3, read 4, reply 2).
+5. **`/hq` → Run night path now** on that lead, "For the COO" (or CEO, CFO, the person met). The board fills live: a size fact from the company's own site, researcher, showrunner, skeptic (reading as that executive), then compliance. Started from /hq it skips the rewrite round, because someone is waiting: 16-18 s on the cold run below.
 6. **Open `/p/<slug>`.**
    - The page opens with the hallway quote, attributed by role only, then usually one card: we only show a card a source backs.
    - Below it, "One question": a single yes/no offer (a free one-page teardown of that process, no data, no call).
@@ -77,6 +78,33 @@ Model: `ANTHROPIC_MODEL`, default `claude-sonnet-5-5`. Every call goes through `
    - Show the Skeptic-CEO scores. They are honest and often below the bar, and then /hq marks the card "below bar" (internal only, not in the draft subject).
    - Approve to create a **local draft to our own inbox**, or Kill (a note is required).
    - Nothing is ever sent.
+
+## Live demo: cold run
+
+Rehearsed on 2026-10-24 on three Finnish companies that were not in the database and that nobody had prepared, through the real routes on a production build (`next start`): capture by name, brief, a short spoken-style note (invented, marked "Demo note"), night path, `/p`. The times are wall-clock from `scripts/coldrun.mjs`, which calls the same HTTP routes the pages call (`node scripts/coldrun.mjs "Kemira Oyj" "<note>" "<job title>"`; it spends 1 PRH request and 5 model runs per company).
+
+| Company (size) | Name → brief | Note saved | Night path | `/p` | What broke, and the fix |
+|---|---|---|---|---|---|
+| Kemira Oyj (large, listed; its site says 4,900 people) | 5.3 s (PRH 1.1 + scout 4.2) | 1.9 s | 18.1 s (research 8.7, script 4.1, reader test 3.7) | 0.1 s | The note named no role, so the letter says "unknown role": /capture now has a job-title field, filled from the badge. The pilot line was dropped because "PDF" counted as an uncited proper noun: it now cites card 1's sources when its only facts are card 1's. |
+| Mipro Oy (small private Oy, rail signalling) | 5.7 s (1.3 + 4.4) | 2.0 s | 16.3 s (3.9, 4.3, 4.9) | 0.3 s | Compliance held the page over "Väylävirasto's Mipro TCS" (a TED buyer and a product read as a person's name). The check now needs 2+ words unknown to the evidence; the hold cleared on the next /hq load. |
+| Teleste Oyj (mid-size, listed) | 8.9 s (1.5 + 7.4) | 2.0 s | 0.0 s, offline template (model-down fallback, no key in that process) | n/a | The brief came back **thin**: TED's fuzzy match returned 9 "SPL Tele GmbH"-type namesakes. TED now retries with a prefix match ("Teleste*") and finds the real awards. The offline template was poor (pain text pasted twice, inputs cited to a note that did not state them): fixed, and it now states the newest TED award as a cited fact. |
+
+Each company cost one PRH request (the scout now reuses the record the name search returned), 3 in total. Model runs: 12 (Kemira 5, Mipro 5, Teleste 2).
+
+**Steps on stage** (laptop on `/hq`, phone on `/capture`):
+
+1. The judge names a company. Type it on `/capture` and press Go. Brief in 5-9 s.
+2. Read one signal aloud and tap its chip.
+3. Speak or type two sentences in their words ("their order team retypes … every morning, two of us, two hours each"), fill the job title, Save lead (2 s). Tap "make the page on /hq".
+4. On `/hq`, Run (For the COO). The board shows research, script and reader test; the page is ready in about 16-20 s.
+5. Open `/p`: the hours headline, the quote with its demo-note label, card 1 with "Why it matters at <company>" (a cited tender or site fact), the pilot line, "What we checked", the one question, play the audio.
+
+**Fallbacks:**
+
+- PRH slow or rate-limited: companies already looked up come from the DB; otherwise type the Y-tunnus. Keep at most one lookup every 20 s; a 429 is retried once.
+- Brief comes back thin (no TED, no site): say so, it is the honest output; the night path still works from the note.
+- Model slow or down: the brief falls back to evidence-only, and the night path builds the template page (as with Teleste above). It is labelled "sector estimate" and gets no reader test.
+- Night path fails: /hq says why and keeps no half page; run it again or open a page made in rehearsal.
 
 If the venue network is slow:
 
@@ -106,7 +134,7 @@ node matrix/agent-ops/feed.mjs --check
 
 ## Known limits
 
-- The skeptic gate scores real pages stop 5-6, read 6-7, reply 4-5 out of 10 as a CEO. Since it reads as the executive the page is for and judges at the company's real size, the Ponsse page scores 5/6/4: its stated reason is that €18 600 is small for Ponsse. We keep the pilot figure honest rather than scale it to a headcount nobody said does the task; the page says the estimate covers the formula's team only and shows the size fact next to it. Pages under the bar still go to approval, marked "below bar" on /hq, with the skeptic's one-line reason for its reply score.
+- The skeptic gate scores real pages stop 5-6, read 6-7, reply 4-5 out of 10 as a CEO. Since it reads as the executive the page is for and judges at the company's real size, the Ponsse page scores 5/6/4: its stated reason is that €18 600 is small for Ponsse. We keep the pilot figure honest rather than scale it to a headcount nobody said does the task; the page says the estimate covers the formula's team only and shows the size fact next to it. Pages under the bar still go to approval, marked "below bar" on /hq, with the skeptic's one-line reason for its reply score. The cited "why it matters" line did not lift it: on the cold run Kemira scored 4/6/2 ("€37k is trivial for a 4,900-person company") and Mipro 5/6/3 (the euro figure too small; frame it around the new contract's reporting load).
 - The name scrub is regex plus a model-provided name list. Finnish consonant-gradation forms (Pekka → Pekan) depend on the model listing the name.
 - The site guard checks hostnames only, with no DNS resolution.
 - The optional Telegram bot is not built. `npm run bot` only prints a message and exits.

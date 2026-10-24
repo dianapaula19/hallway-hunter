@@ -55,21 +55,28 @@ export function tedExcerpt(h: TedHit, companyName: string): string {
     (h.role === "tenderer" ? `Tenderer/winner incl. ${h.tenderers.filter((t) => norm(t).includes(norm(stem(companyName)))).join(", ")}.` : `${companyName} is the buyer.`)
 }
 
-export async function tedQuery(companyName: string, limit = 3): Promise<TedHit[]> {
-  const s = stem(companyName)
+async function search(query: string, limit: number): Promise<TedNotice[]> {
   const res = await fetch(SEARCH, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify({
-      query: `(organisation-name-tenderer ~ "${s}" OR buyer-name ~ "${s}") SORT BY publication-date DESC`,
-      fields: FIELDS,
-      limit: Math.min(limit * 3, 15), // over-fetch, then drop fuzzy false positives
-    }),
+    body: JSON.stringify({ query, fields: FIELDS, limit }),
     signal: AbortSignal.timeout(8000),
   })
   if (!res.ok) throw new Error(`TED ${res.status}`)
-  const j = (await res.json()) as { notices?: TedNotice[] }
-  return parseNotices(j.notices ?? [], companyName).slice(0, limit)
+  return ((await res.json()) as { notices?: TedNotice[] }).notices ?? []
+}
+
+export async function tedQuery(companyName: string, limit = 3): Promise<TedHit[]> {
+  const s = stem(companyName)
+  // `~` is fuzzy and ignores ä/ö ("Wartsila" finds Wärtsilä), so it goes first; over-fetch, then drop false positives.
+  let hits = parseNotices(await search(`(organisation-name-tenderer ~ "${s}" OR buyer-name ~ "${s}") SORT BY publication-date DESC`, Math.min(limit * 3, 15)), companyName)
+  // A short stem drowns in namesakes: for "Teleste" the newest 9 fuzzy hits were all "SPL Tele GmbH" and the like, and
+  // the brief came back thin. Then a prefix match on the stem ("Teleste*") finds the real notices.
+  if (hits.length < limit) {
+    const more = parseNotices(await search(`(organisation-name-tenderer = "${s}*" OR buyer-name = "${s}*") SORT BY publication-date DESC`, limit * 2).catch(() => []), companyName)
+    hits = [...hits, ...more.filter((m) => !hits.some((h) => h.number === m.number))]
+  }
+  return hits.slice(0, limit)
 }
 
 // Persists each hit as a 'ted' source (reusing an existing row for the same notice) and returns them with ids.

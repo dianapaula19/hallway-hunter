@@ -26,6 +26,9 @@ Rules:
 - Line 1 (host A) quotes the hallway quote VERBATIM in quotation marks, says a <role> said it to a Velho consultant in a conference hallway (role only, never a name), and cites its hallway source id.
   With no hallway quote, line 1 states the strongest cited public fact about a recurring process, citing it.
 - Lead with the card closest to the hallway pain and spend most of the script on it: what the task is today, what changes (name the mechanism plainly, e.g. "a tablet form that fills the CRM record"), the estimate. Never undercut the case ("small next to the cost of", "the euro figure is the smaller part"). Mention other cards (if any) in one line each. Never mention cards that are not on the page. Be confident and concrete: the page already shows every caveat and the editable formula, so say "estimate" once per euro figure and do not apologise, say "thin data", or list what you left out.
+- The listener has the page open. Never read a card, the "why" line or the question aloud word for word: say each in fresh,
+  shorter spoken words (line 1's hallway quote is the one verbatim line). Give the company-level "why" (if listed below) one
+  short line of its own, citing its source, right after the estimate: it is the reason an executive cares.
 - With no cards, spend the script on the questions listed below: what the public record shows and the one thing we would ask.
 - Cite a public source only where it adds a fact the reader would not already know (e.g. a tender a card is built on). Never add a line just to cite something, never describe the company to its own management, and never say what you "checked". Any line with a number, €, % or a proper noun other than the company name MUST cite source ids that support it.
 - A line that repeats a detail from the hallway quote (a system name, a task) cites the hallway source id too, even if it is a question.
@@ -74,7 +77,7 @@ export const wordCount = (lines: ScriptLine[]) => lines.reduce((n, l) => n + l.t
 export async function writeScript(
   ctx: NightContext, pageId: string, opps: DraftOpportunity[],
   rewrite?: { previous: ScriptLine[]; score: SkepticScore },
-  extra: { recipient?: string | null; questions?: Claim[] } = {},
+  extra: { recipient?: string | null; questions?: Claim[]; why?: Claim | null; path?: Claim | null } = {},
 ): Promise<{ runId: string; lines: ScriptLine[]; dropped: ScriptLine[] }> {
   const hallway = ctx.sources.find((s) => s.kind === "hallway" && s.lead_id === ctx.lead?.id)
   const cards = opps.map((o, i) =>
@@ -84,6 +87,8 @@ export async function writeScript(
     ctx.lead && hallway ? `Hallway quote (from a ${ctx.lead.role}), source ${hallway.id}: "${ctx.lead.quote}"` : "No hallway quote: open with the strongest cited signal instead.",
     extra.recipient ? `The reader is their ${extra.recipient}; the person met in the hallway forwards it.` : "",
     `Opportunity cards on the page:\n${cards || "(none: thin data)"}`,
+    extra.why ? `Why it matters at company level (printed under card 1): ${extra.why.text} [${extra.why.source_ids.join(", ")}]` : "",
+    extra.path ? `Pilot path (printed under card 1): ${extra.path.text} [${extra.path.source_ids.join(", ")}]` : "",
     extra.questions?.length ? `Questions on the page ("What we'd ask you"):\n${extra.questions.map((q) => `- ${q.text} [${q.source_ids.join(", ")}]`).join("\n")}` : "",
     `Evidence store:\n${sourceList(ctx.sources)}`,
     rewrite ? `REWRITE. A skeptical CEO scored the previous draft stop=${rewrite.score.stop} read=${rewrite.score.read} reply=${rewrite.score.reply}. Notes: ${rewrite.score.notes}\nApply the notes only where they fit every rule above (labels, citations, no promises, the ask format).\nPrevious draft:\n${rewrite.previous.map((l) => `${l.host}: ${l.text}`).join("\n")}` : "",

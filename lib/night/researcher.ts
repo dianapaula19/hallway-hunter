@@ -5,7 +5,12 @@ import type { Claim, Company, EuroFormula, Lead, Source } from "../types.ts"
 import { fetchSite } from "../live/site.ts"
 import { tedSearch } from "../live/ted.ts"
 import { normalizeFormula } from "./formula.ts"
-import { sanitizeClaims } from "./sanitize.ts"
+import { needsSource, sanitizeClaims } from "./sanitize.ts"
+
+// Words that make a sentence factual under the sanitizer's rule: digits, €/%, and capitalised words after a sentence start.
+export const factWords = (t: string) =>
+  t.split(/(?<=[.!?;:])\s+/).flatMap((s) => s.split(/\s+/).slice(1)).map((w) => w.replace(/^[^\p{L}\d€%]+|[^\p{L}\d€%]+$/gu, ""))
+    .filter((w) => /[\d€%]/.test(w) || /^\p{Lu}/u.test(w))
 
 export interface NightContext { company: Company; lead: Lead | null; sources: Source[] }
 export interface DraftOpportunity { title: string; claim: Claim; formula: EuroFormula }
@@ -32,9 +37,10 @@ const CLAIM = {
   properties: { text: { type: "string" }, source_ids: { type: "array", items: { type: "string" } } },
 }
 const SCHEMA = {
-  type: "object", additionalProperties: false, required: ["opportunities", "checked", "questions"],
+  type: "object", additionalProperties: false, required: ["opportunities", "why", "path", "questions"],
   properties: {
-    checked: CLAIM,
+    why: CLAIM,
+    path: CLAIM,
     questions: { type: "array", items: CLAIM },
     opportunities: {
       type: "array",
@@ -78,19 +84,26 @@ Rules:
   Be conservative: Finnish loaded labour cost is typically 35-60 €/h, weeks_per_year about 46, automation_share rarely above 0.6.
 - No promises ("guarantee", "will save", "we will"). No personal names. Titles max 7 words, claims max 40 words, plain CEO English.
 - Tools: search_sources reads the evidence store; ted_search and fetch_site add new public evidence (read-only). Use them sparingly.
+- Never scale people to the company's headcount, dealer count or store count: nobody said those people do this task. The company-level case goes in "why" and "path" below, in words.
 Also return:
-- checked: ONE sentence (max 30 words) for a "What we checked" line that ties a PUBLIC source (TED notice or the company's own site,
-  never the hallway note or the trade register) to the same process as card 1, e.g. "Ponsse Czech holds a harvester service and
-  repair framework with Lesy ČR (TED 518942-2026), so dealer parts orders also come from abroad." Cite it. If no public source
-  mentions that process, write only "We found nothing public about <the process>; we checked <N> TED notices and <their site>."
-  citing the public sources you checked, and do NOT describe what those unrelated sources are about (a reader takes that as padding).
-  No company blurb ("X is a global leader..."). If there are no public sources at all, give empty source_ids.
+- why: ONE sentence (max 35 words) the COO or CEO reads under card 1: the company-level reason this process matters, from a
+  PUBLIC source in the store (a TED award or framework with its month, the company's own site such as its dealer network,
+  service offer or size, or the trade register's industry line). Name the public fact, then tie it to card 1's process in plain
+  logic, e.g. "You won the Lesy ČR harvester service framework in July 2026; every new framework adds dealer parts orders that
+  today get retyped." Cite the public source (and the hallway source if you repeat its detail). Use only facts the cited sources
+  state; the tie is the one inference allowed, with no number. A public source unrelated to the process or the company's scale
+  (e.g. a one-off sale of one machine) is not a reason: then return empty text and empty source_ids. No company blurb.
+- path: ONE sentence (max 30 words) framing card 1 as a pilot when its team is small (people 5 or fewer): start with card 1's
+  process, then name what the same fix reaches next, e.g. "Start with dealer parts orders; the same reader then handles warranty
+  claims and service reports." Name a further process only if a cited source mentions it, and cite it; cite the hallway source
+  when you repeat its detail. Otherwise write it with no
+  digits and no names ("then the next document type your team retypes") and empty source_ids. Empty text when there is no card.
 - questions: only when there is NO hallway lead: 2 or 3 short questions we would ask their COO, each tied to one public source
   that shows a recurring process (a framework, many call-offs, many sites or stores), citing it, e.g. "You supply 14 municipalities
   under one food framework (TED ...): how do their call-off orders reach your order system today?". No questions about
   what a source does not show. With a hallway lead, return an empty list.`
 
-export async function research(ctx: NightContext, pageId: string): Promise<{ runId: string; opportunities: DraftOpportunity[]; checked: Claim | null; questions: Claim[]; dropped: number }> {
+export async function research(ctx: NightContext, pageId: string): Promise<{ runId: string; opportunities: DraftOpportunity[]; why: Claim | null; path: Claim | null; questions: Claim[]; dropped: number }> {
   const { company } = ctx
   const tools: Tool<any>[] = [
     {
@@ -122,7 +135,7 @@ export async function research(ctx: NightContext, pageId: string): Promise<{ run
   ]
 
   const lead = ctx.lead ? `Hallway lead (role: ${ctx.lead.role}): pain "${ctx.lead.pain}", quote "${ctx.lead.quote}".` : "No hallway lead."
-  const r = await runAgent<{ opportunities: { title: string; claim: Claim; formula: Partial<EuroFormula> }[]; checked?: Claim; questions?: Claim[] }>({
+  const r = await runAgent<{ opportunities: { title: string; claim: Claim; formula: Partial<EuroFormula> }[]; why?: Claim; path?: Claim; questions?: Claim[] }>({
     agent: "researcher", subjectId: pageId, system: SYSTEM, tools, maxToolCalls: 8, effort: "medium", schema: SCHEMA,
     prompt: `Company: ${company.name}${company.business_id ? ` (Y-tunnus ${company.business_id})` : ""}\n${lead}\n\nEvidence store:\n${sourceList(ctx.sources) || "(empty)"}\n\nReturn 1-3 opportunities, only those a cited source directly supports.`,
   })
@@ -134,14 +147,31 @@ export async function research(ctx: NightContext, pageId: string): Promise<{ run
     .filter((o) => kept.includes(o.claim))
     .slice(0, 3)
     .map((o) => ({ title: String(o.title).slice(0, 80), claim: o.claim, formula: normalizeFormula(o.formula, known) }))
-  // "What we checked" must lean on a public source (TED or site); with none in the store, an uncited "found nothing" line is allowed.
-  const pub = new Set(all<{ id: string }>("SELECT id FROM sources WHERE company_id = ? AND kind IN ('ted', 'site')", company.id).map((x) => x.id))
-  const c = r.json?.checked
-  const checked = c?.text?.trim()
-    ? c.source_ids?.length
-      ? sanitizeClaims(company.id, [c], r.runId).kept.find((k) => k.source_ids.some((id) => pub.has(id))) ?? null
-      : pub.size ? null : { text: c.text.trim(), source_ids: [] }
+  // "why" must lean on a public source (TED, own site or the trade register); anything else is dropped, not shown uncited.
+  const pub = new Set(all<{ id: string }>("SELECT id FROM sources WHERE company_id = ? AND kind IN ('ted', 'site', 'prh')", company.id).map((x) => x.id))
+  const w = r.json?.why
+  const why = w?.text?.trim() && opportunities.length
+    ? sanitizeClaims(company.id, [w], r.runId).kept.find((k) => k.source_ids.some((id) => pub.has(id))) ?? null
+    : null
+  // "path" may go uncited only when it states no fact (no digit, €, % or proper noun), the script-line rule. When its only
+  // facts are card 1's own words ("Start with PDF orders into SAP; …"), it cites card 1's sources rather than being dropped.
+  const pt = r.json?.path
+  const card1 = opportunities[0] ? `${opportunities[0].title} ${opportunities[0].claim.text} ${ctx.lead?.quote ?? ""}`.toLowerCase() : ""
+  const path = pt?.text?.trim() && opportunities.length
+    ? pt.source_ids?.length ? sanitizeClaims(company.id, [pt], r.runId).kept[0] ?? null
+      : !needsSource(pt.text, company.name) ? { text: pt.text.trim(), source_ids: [] }
+      : factWords(pt.text).every((w) => card1.includes(w.toLowerCase())) ? { text: pt.text.trim(), source_ids: opportunities[0].claim.source_ids }
+      : null
     : null
   const questions = ctx.lead ? [] : sanitizeClaims(company.id, r.json?.questions ?? [], r.runId).kept.slice(0, 3)
-  return { runId: r.runId, opportunities, checked, questions, dropped: raw.length - kept.length }
+  return { runId: r.runId, opportunities, why, path, questions, dropped: raw.length - kept.length }
+}
+
+// Self-check (no model call): node lib/night/researcher.ts
+if (import.meta.main) {
+  const assert: typeof import("node:assert/strict") = (await import("node:assert/strict")).default
+  assert.deepEqual(factWords("Start with emailed PDF orders into SAP; the same reader then handles the next type."), ["PDF", "SAP"])
+  assert.deepEqual(factWords("Start small, then the next document type your team retypes."), [])
+  assert.deepEqual(factWords("Then warranty claims for 40 Dealers."), ["40", "Dealers"])
+  console.log("researcher self-check ok")
 }

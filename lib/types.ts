@@ -104,7 +104,9 @@ export interface SkepticScore {
 export interface PageLetter {
   recipient: string | null // who the page is framed for: "COO", "CFO", or the role met
   scale: Claim | null // one public size fact (headcount, dealers, countries) from the company's own site
-  checked: Claim | null // "What we checked": a public source tied to the same process, or that nothing public mentions it
+  checked: Claim | null // older pages: the model's "what we checked" sentence (new pages list the sources by kind instead)
+  why?: Claim | null // card 1's company-level reason, cited to a public source (TED, own site, PRH): why an exec cares
+  path?: Claim | null // pilot framing: start with card 1's process, then the cited processes the same fix reaches
   questions: Claim[] // no-lead pages: what we'd ask, each grounded in a public source
 }
 

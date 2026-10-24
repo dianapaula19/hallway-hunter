@@ -37,7 +37,8 @@ const SCHEMA = {
 }
 
 // synthetic: a demo note, invented for a demo (the /capture toggle); pages label it so nobody reads it as a real quote.
-export async function extractLead(companyId: string, transcript: string, synthetic = false): Promise<Lead> {
+// role: the job title from the badge or typed on /capture; used when the note itself does not say one.
+export async function extractLead(companyId: string, transcript: string, synthetic = false, role?: string | null): Promise<Lead> {
   if (!get("SELECT id FROM companies WHERE id = ?", companyId)) throw new Error("unknown company")
   const clean = scrubNames(transcript.trim()).slice(0, 4000)
   if (!clean) throw new Error("empty transcript")
@@ -69,7 +70,7 @@ export async function extractLead(companyId: string, transcript: string, synthet
   const clip = (t: string, n: number) => stripNames(scrubNames(t ?? ""), x.names ?? []).slice(0, n)
   const lead: Lead = {
     id: uid("lead"), company_id: companyId, created_at: now(),
-    role: clip(x.role, 80) || "unknown role",
+    role: (!/^unknown role$/i.test(x.role?.trim() ?? "") && clip(x.role, 80)) || clip(role?.trim() ?? "", 80) || "unknown role",
     quote: clip(x.quote, 500),
     pain: clip(x.pain, 200),
     next_step: clip(x.next_step, 200),

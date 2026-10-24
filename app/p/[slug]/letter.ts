@@ -1,6 +1,6 @@
 // Shared by the letter page (/p) and the landing artefact (/): one number locale and one headline.
 import { eurPerYear } from "../../../lib/night/formula.ts"
-import type { EuroFormula, Opportunity } from "../../../lib/types.ts"
+import type { EuroFormula, Opportunity, Source } from "../../../lib/types.ts"
 
 // Finnish number style everywhere on the page: decimal comma, narrow no-break space between thousands.
 export const fi = (n: number) => n.toLocaleString("fi-FI", { maximumFractionDigits: 2 }).replace(/\s/g, " ").replace("−", "-")
@@ -46,9 +46,39 @@ export function headline(top: Opportunity | undefined): { h1: string[]; eur: str
   const eurN = eurPerYear(f)
   const eur = `About ${fiEur(eurN)} a year to win back`
   const assumed = (top.claim.text.match(/\bassum\w*|\bpilot team\b/gi) ?? []).length
-  if (assumed >= 2) return { h1: [top.title.replace(/[.\s]*$/, ".")], eur, label: f.label }
+  // No input sourced at all ("sector estimate", e.g. the offline template's defaults): the hours are a guess, not a headline.
+  if (assumed >= 2 || f.label === "sector estimate") return { h1: [top.title.replace(/[.\s]*$/, ".")], eur, label: f.label }
   if (eurN < SMALL_EUR) return { h1: [`${fi(hours)} hours a week by hand.`], eur, label: f.label }
   return { h1: [`${fi(hours)} hours a week by hand.`, `${eur}.`], eur: null, label: f.label }
+}
+
+// "What we checked", deterministic: every source behind the page by kind, with dates (TED by publication month,
+// the rest by when we read them). Shows the research even where no line cites it.
+const tz = "Europe/Helsinki"
+const dmy = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: tz })
+const my = (iso: string, year = true) => new Date(iso).toLocaleDateString("en-GB", { month: "short", ...(year ? { year: "numeric" } : {}), timeZone: tz })
+export function checkedLine(sources: Pick<Source, "kind" | "url" | "excerpt" | "fetched_at">[]): string[] {
+  const of = (k: Source["kind"]) => sources.filter((x) => x.kind === k)
+  const last = (xs: { fetched_at: string }[]) => xs.map((x) => x.fetched_at).sort().at(-1)!
+  const out: string[] = []
+  const prh = of("prh")
+  if (prh.length) out.push(`trade register (PRH), read ${dmy(last(prh))}`)
+  const ted = of("ted")
+  if (ted.length) {
+    const d = ted.map((x) => x.excerpt.match(/^\d{4}-\d{2}-\d{2}/)?.[0]).filter((x): x is string => !!x).sort()
+    const a = d[0], b = d.at(-1)
+    const span = !a || !b ? "" : my(a) === my(b) ? my(a) : a.slice(0, 4) === b.slice(0, 4) ? `${my(a, false)}–${my(b)}` : `${my(a)}–${my(b)}`
+    out.push(`${ted.length} EU tender notice${ted.length > 1 ? "s" : ""} (TED)${span ? `, ${span}` : ""}`)
+  }
+  const hosts = new Map<string, { fetched_at: string }[]>()
+  for (const x of of("site")) {
+    const h = x.url ? new URL(x.url).hostname.replace(/^www\./, "") : "their website"
+    hosts.set(h, [...(hosts.get(h) ?? []), x])
+  }
+  for (const [h, xs] of hosts) out.push(`${h}${xs.length > 1 ? ` (${xs.length} pages)` : ""}, read ${dmy(last(xs))}`)
+  const hall = of("hallway")
+  if (hall.length) out.push(`the hallway note, ${dmy(last(hall))}`)
+  return out
 }
 
 // Self-check: node app/p/[slug]/letter.ts
@@ -70,5 +100,14 @@ if (import.meta.main) {
   assert.deepEqual(headline(opp("Two people retype each order.", 7.5, 2))!.h1, ["15 hours a week by hand."])
   assert.equal(headline(opp("Two people retype each order.", 7.5, 2))!.eur, `About ${fiEur(17250)} a year to win back`)
   assert.equal(headline(opp("Forty people retype.", 7.5, 40))!.h1.length, 2)
+  const guess = opp("Two people retype each order.", 6, 3); guess.formula.label = "sector estimate"
+  assert.deepEqual(headline(guess)!.h1, ["Mill visit reports written twice."])
+  const src = (kind: Source["kind"], excerpt: string, url: string | null, at = "2026-10-24T10:00:00Z") => ({ kind, excerpt, url, fetched_at: at })
+  // en-GB in Node 24's ICU writes "Sept"
+  assert.deepEqual(checkedLine([
+    src("prh", "x", "https://tietopalvelu.ytj.fi/yritys/1"), src("ted", "2026-07-27 contract award", "t"), src("ted", "2026-09-23 contract award", "t"),
+    src("site", "a", "https://www.ponsse.com/"), src("site", "b", "https://www.ponsse.com/about"), src("hallway", "q", null),
+  ]), ["trade register (PRH), read 24 Oct 2026", "2 EU tender notices (TED), Jul–Sept 2026", "ponsse.com (2 pages), read 24 Oct 2026", "the hallway note, 24 Oct 2026"])
+  assert.deepEqual(checkedLine([src("ted", "2025-12-01 x", "t"), src("ted", "2026-02-01 x", "t")]), ["2 EU tender notices (TED), Dec 2025–Feb 2026"])
   console.log("letter.ts ok")
 }

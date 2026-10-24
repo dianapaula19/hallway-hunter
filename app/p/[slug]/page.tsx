@@ -5,7 +5,7 @@ import { isConfidential } from "@/lib/night/compliance.ts"
 import type { Claim, Company, Lead, Opportunity, Page, Source } from "@/lib/types.ts"
 import { TERMS } from "@/lib/night/script.ts"
 import { Chips, Forward, FormulaRow, Player } from "./client.tsx"
-import { fiText, headline, withoutEcho } from "./letter.ts"
+import { checkedLine, fi, fiText, headline, withoutEcho } from "./letter.ts"
 import s from "./page.module.css"
 
 export const dynamic = "force-dynamic"
@@ -48,7 +48,14 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
   const script = page.script.filter((l) => showQuote || !l.source_ids.some((id) => sources.get(id)?.kind === "hallway"))
 
   const letter = page.letter
-  const checked = [letter?.scale, letter?.checked].filter((c): c is Claim => !!c)
+  const isPublic = (c: Claim | null | undefined) => !!c && c.source_ids.some((id) => ["ted", "site", "prh"].includes(sources.get(id)?.kind ?? ""))
+  // Card 1's company-level reason. Pages from before the "why" line keep their "what we checked" sentence there when it
+  // cites public evidence; a "we found nothing public" sentence is not a reason and stays out of the card.
+  const why = letter?.why ?? (isPublic(letter?.checked) && !/found nothing/i.test(letter!.checked!.text) ? letter!.checked : null)
+  const path = letter?.path ?? null
+  const checked = [letter?.scale, why, path].filter((c): c is Claim => !!c)
+  // Everything the page rests on, by kind and date, cited or not (a hallway source from another lead is not this page's).
+  const checkedItems = checkedLine([...sources.values()].filter((x) => x.kind !== "hallway" || x.id === hallway?.id))
   const questions = letter?.questions ?? []
   // Number citations in reading order: quote, cards, what we checked, questions, script, then the register line.
   const order: string[] = []
@@ -71,7 +78,7 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
   const fwdFirst = opps[0] && top
     ? `${fiText(opps[0].claim.text.split(/(?<=[.!?])\s/)[0])} ${top.eur ?? top.h1.at(-1)!.replace(/\.$/, "")} (${top.label}; the working is on the page).`
     : questions[0] ? `What the public record shows: ${fiText(questions[0].text)}` : null
-  const fwdText = fwdFirst && ask ? `${fwdFirst} ${fiText(ask.text.slice(0, q))}` : null
+  const fwdText = fwdFirst && ask ? [fwdFirst, why && fiText(why.text), fiText(ask.text.slice(0, q))].filter(Boolean).join(" ") : null
   // We store no event name, only when the lead was captured.
   const met = lead ? `Met in a conference hallway, ${day(lead.created_at)}` : null
   // Reply yes opens the viewer's own mail app, addressed to our inbox. The app sends nothing (CLAUDE.md rule 1).
@@ -119,16 +126,23 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
               <li key={o.id} className={s.card}>
                 <h3 className={s.h3}>{opps.length > 1 && <span className={s.cardNum}>{i + 1}.</span>}{o.title}</h3>
                 <p className={s.claim}>{fiText(withoutEcho(o.claim.text, showQuote ? lead.quote : null))} <Chips ids={o.claim.source_ids} num={num} /></p>
+                {i === 0 && why && <p className={s.why}><span className={s.whyLabel}>Why it matters at {name}</span>{fiText(why.text)} <Chips ids={why.source_ids} num={num} /></p>}
                 <FormulaRow formula={o.formula} chips={<Chips ids={o.formula.input_source_ids} num={num} />} />
+                {i === 0 && (path || letter?.scale) && (
+                  <p className={s.path}>
+                    {path && <><span className={s.whyLabel}>Start as a pilot</span>{fiText(path.text)} <Chips ids={path.source_ids} num={num} /> </>}
+                    <span className={s.muted}>The estimate covers the {fi(o.formula.people)} {o.formula.people === 1 ? "person" : "people"} in the formula, not all of {name}.{letter?.scale && <> For scale, {fiText(letter.scale.text)} <Chips ids={letter.scale.source_ids} num={num} /></>}</span>
+                  </p>
+                )}
               </li>
             ))}
           </ol>
-          {checked.length > 0 && (
-            <div className={s.checked}>
-              <h3 className={s.checkedH}>What we checked</h3>
-              {checked.map((c, i) => <p key={i}>{fiText(c.text)} <Chips ids={c.source_ids} num={num} /></p>)}
-              {letter?.scale && opps.length > 0 && <p className={s.muted}>The estimate above is for the team in the formula only. Set &ldquo;people&rdquo; to the number who do this task at {name}.</p>}
-            </div>
+          {opps.length === 0 && letter?.scale && <p className={s.muted}>For scale, {fiText(letter.scale.text)} <Chips ids={letter.scale.source_ids} num={num} /></p>}
+          {checkedItems.length > 0 && (
+            <p className={s.checked}>
+              <span className={s.checkedH}>What we checked</span>
+              {checkedItems.join(" · ")}.{opps.length > 0 && !why && " Nothing public we found ties to this process yet."}
+            </p>
           )}
         </section>
 

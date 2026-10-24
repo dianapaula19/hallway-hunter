@@ -6,13 +6,28 @@
 // euro figures, skeptic scores, compliance re-run with today's rules).
 import { mkdirSync, writeFileSync } from "node:fs"
 import { all, get, run } from "../lib/db.ts"
-import { checkCompliance, speechSecs } from "../lib/night/compliance.ts"
+import { checkCompliance, letterClaims, speechSecs } from "../lib/night/compliance.ts"
 import { minScore } from "../lib/night/skeptic.ts"
 import type { BriefRow, Claim, Lead, Opportunity, Page, Source } from "../lib/types.ts"
 
 const TARGET_SECS = 75
 const words = (t: string) => t.split(/\s+/).filter(Boolean).length
 const yes = (b: boolean) => (b ? "yes" : "**no**")
+
+// Share of the script's middle lines (not line 1, the hallway quote, nor the last, the ask the page also prints) that the
+// page already says word for word: words inside a 6-word run that also appears in a card, the why or the pilot line.
+const shingles = (t: string) => { const w = t.toLowerCase().match(/[\p{L}\d€%]+/gu) ?? []; return { w, set: new Set(w.map((_, i) => w.slice(i, i + 6).join(" ")).filter((_, i) => i + 6 <= w.length)) } }
+export function readAloud(script: { text: string }[], page: string[]): number {
+  const onPage = new Set(page.flatMap((t) => [...shingles(t).set]))
+  let hit = 0, total = 0
+  for (const l of script.slice(1, -1)) {
+    const { w } = shingles(l.text)
+    const covered = new Set<number>()
+    for (let i = 0; i + 6 <= w.length; i++) if (onPage.has(w.slice(i, i + 6).join(" "))) for (let j = i; j < i + 6; j++) covered.add(j)
+    hit += covered.size; total += w.length
+  }
+  return total ? Math.round((hit / total) * 100) : 0
+}
 
 const briefs = all<BriefRow & { name: string }>(
   "SELECT b.*, c.name FROM briefs b JOIN companies c ON c.id = b.company_id ORDER BY b.created_at DESC LIMIT 30")
@@ -29,7 +44,7 @@ const pageRows = pages.map((p) => {
   const sources = all<Source>("SELECT * FROM sources WHERE company_id = ?", p.company_id)
   const lead = p.lead_id ? get<Lead>("SELECT * FROM leads WHERE id = ?", p.lead_id) ?? null : null
   const kind = new Map(sources.map((s) => [s.id, s.kind]))
-  const extra = [p.letter?.checked, p.letter?.scale, ...(p.letter?.questions ?? [])].filter((c): c is Claim => !!c)
+  const extra = letterClaims(p.letter)
   const cited = new Set([...opps.flatMap((o) => [...o.claim.source_ids, ...o.formula.input_source_ids]), ...p.script.flatMap((l) => l.source_ids), ...extra.flatMap((c) => c.source_ids)])
   const publicCited = [...cited].filter((id) => kind.get(id) === "ted" || kind.get(id) === "site").length
   const scriptWords = p.script.reduce((n, l) => n + words(l.text), 0)
@@ -37,13 +52,14 @@ const pageRows = pages.map((p) => {
   const euroLines = p.script.filter((l) => /€|\beuros\b/i.test(l.text))
   const labelled = euroLines.every((l) => /estimate/i.test(l.text)) && opps.every((o) => !!o.formula.label)
   const final = p.skeptic.at(-1)
+  const aloud = readAloud(p.script, [...opps.flatMap((o) => [o.title, o.claim.text]), ...extra.map((c) => c.text)])
   const c = checkCompliance({ companyName: p.name, lead, sources: sources.filter((s) => s.kind !== "hallway" || s.lead_id === lead?.id), opps, lines: p.script, letter: p.letter })
   if (process.argv.includes("--recheck") && p.status === "pending_approval") run("UPDATE pages SET compliance = ? WHERE id = ?", c, p.id)
   return {
     slug: p.slug, name: p.name, status: p.status, lead: !!lead, cards: opps.length, cites: cited.size, publicCited,
     publicInStore: sources.filter((s) => s.kind === "ted" || s.kind === "site").length,
     scriptWords, secs, secsOk: secs <= TARGET_SECS, labelled, final, rounds: p.skeptic.length,
-    checked: !!p.letter?.checked, scale: !!p.letter?.scale, compliance: c,
+    checked: !!p.letter?.checked, scale: !!p.letter?.scale, why: !!p.letter?.why, path: !!p.letter?.path, aloud, compliance: c,
   }
 })
 
@@ -56,9 +72,9 @@ const md = [
   ``,
   `Briefs within 120 words: ${briefRows.filter((r) => r.ok).length}/${briefRows.length}. With 2 signals: ${briefRows.filter((r) => r.signals >= 2).length}/${briefRows.length}.`, ``,
   `## Pages (not killed)`, ``,
-  `| Page | Company | Status | Lead | Cards | Cited | Public cited / in store | What we checked | Size fact | Script words | Audio s (≤${TARGET_SECS}) | € labelled | Skeptic final stop/read/reply (rounds) | Compliance now |`,
-  `|---|---|---|---|---|---|---|---|---|---|---|---|---|---|`,
-  ...pageRows.map((r) => `| ${r.slug} | ${r.name} | ${r.status} | ${r.lead ? "yes" : "no"} | ${r.cards} | ${r.cites} | ${r.publicCited} / ${r.publicInStore} | ${yes(r.checked)} | ${r.scale ? "yes" : "no"} | ${r.scriptWords} | ${r.secs}${r.secsOk ? "" : " **over**"} | ${yes(r.labelled)} | ${r.final ? `${r.final.stop}/${r.final.read}/${r.final.reply} (min ${minScore(r.final)}, ${r.rounds})` : "not run"} | ${r.compliance.ok ? "ok" : r.compliance.issues.join("; ").replace(/\|/g, "/")} |`),
+  `| Page | Company | Status | Lead | Cards | Cited | Public cited / in store | Why line (public) | Pilot path | Size fact | Script words | Read aloud from page % | Audio s (≤${TARGET_SECS}) | € labelled | Skeptic final stop/read/reply (rounds) | Compliance now |`,
+  `|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|`,
+  ...pageRows.map((r) => `| ${r.slug} | ${r.name} | ${r.status} | ${r.lead ? "yes" : "no"} | ${r.cards} | ${r.cites} | ${r.publicCited} / ${r.publicInStore} | ${r.why ? "yes" : r.checked ? "old 'checked' line" : "**no**"} | ${r.path ? "yes" : "no"} | ${r.scale ? "yes" : "no"} | ${r.scriptWords} | ${r.aloud} | ${r.secs}${r.secsOk ? "" : " **over**"} | ${yes(r.labelled)} | ${r.final ? `${r.final.stop}/${r.final.read}/${r.final.reply} (min ${minScore(r.final)}, ${r.rounds})` : "not run"} | ${r.compliance.ok ? "ok" : r.compliance.issues.join("; ").replace(/\|/g, "/")} |`),
   ``,
   `Pages with audio ≤ ${TARGET_SECS} s: ${pageRows.filter((r) => r.secsOk).length}/${pageRows.length}. Citing a public source: ${pageRows.filter((r) => r.publicCited > 0).length}/${pageRows.length}. Passing compliance with today's rules: ${pageRows.filter((r) => r.compliance.ok).length}/${pageRows.length}. Skeptic min ≥ 7: ${pageRows.filter((r) => r.final && minScore(r.final) >= 7).length}/${pageRows.length}.`,
   ``,

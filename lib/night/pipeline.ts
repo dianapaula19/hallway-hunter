@@ -20,7 +20,9 @@ function offlineOpps(ctx: NightContext, pageId: string): DraftOpportunity[] {
   const hallway = ctx.sources.find((s) => s.kind === "hallway")
   const others = ctx.sources.filter((s) => s.kind !== "hallway")
   const raw: DraftOpportunity[] = []
-  if (ctx.lead && hallway) raw.push({ title: `Take the ${ctx.lead.pain} off the team`, claim: { text: `A ${ctx.lead.role} described it in the hallway: ${ctx.lead.pain}.`, source_ids: [hallway.id] }, formula: normalizeFormula({ hours_per_week: 6, people: 3, input_source_ids: [hallway.id] }, known) })
+  // The template does not read hours or headcount out of the note, so its inputs are defaults: no source, "sector estimate".
+  const pain = ctx.lead?.pain.replace(/[.\s]+$/, "") ?? ""
+  if (ctx.lead && hallway) raw.push({ title: (pain.split(/[,;:]/)[0] || "The task from the hallway").slice(0, 70), claim: { text: `A ${ctx.lead.role} described it in the hallway: ${pain.charAt(0).toLowerCase() + pain.slice(1)}.`, source_ids: [hallway.id] }, formula: normalizeFormula({ hours_per_week: 6, people: 3 }, known) })
   // Only the hallway card has real evidence of a manual task; a public signal stands in only when there is no lead.
   if (!raw.length) for (const s of others.slice(0, 1)) raw.push({ title: s.title.slice(0, 60), claim: { text: `Signal worth a closer look: ${s.excerpt.split(/(?<=\.)\s/)[0].slice(0, 160)}`, source_ids: [s.id] }, formula: normalizeFormula({}, known) })
   const { kept } = sanitizeClaims(ctx.company.id, raw.map((o) => o.claim), runId)
@@ -34,12 +36,27 @@ function offlineScript(ctx: NightContext, pageId: string, opps: DraftOpportunity
   const hallway = ctx.sources.find((s) => s.kind === "hallway")
   const lines: ScriptLine[] = []
   if (ctx.lead && hallway) lines.push({ host: "A", text: `A ${ctx.lead.role} told a Velho consultant in a conference hallway: “${ctx.lead.quote}”`, source_ids: [hallway.id] })
-  opps.forEach((o, i) => lines.push({ host: i % 2 ? "B" : "A", text: `${o.title}. ${o.claim.text} Our ${o.formula.label}: about ${fmtEur(eurPerYear(o.formula))} a year, and the formula is on the page.`, source_ids: o.claim.source_ids }))
+  opps.forEach((o, i) => lines.push({ host: i % 2 ? "B" : "A", text: `Our ${o.formula.label} for that: about ${fmtEur(eurPerYear(o.formula))} a year, from assumed inputs you can change on the page.`, source_ids: o.claim.source_ids }))
   lines.push({ host: "B", text: CLOSE, source_ids: [] })
   const kept = fitScript(sanitizeScript(ctx.company.id, lines, runId).kept)
   logStep(runId, "info", "offline", "no ANTHROPIC_API_KEY: template script", kept.length)
   endRun(runId, "ok", `${kept.length} lines`)
   return kept
+}
+
+// No model to draw the link, so the template only states the newest public signal (TED award or site page) as a fact.
+function offlineWhy(ctx: NightContext): PageLetter["why"] {
+  const ted = ctx.sources.filter((x) => x.kind === "ted").sort((a, b) => b.excerpt.localeCompare(a.excerpt)) // excerpts start with the date
+  const s = [...ted, ...ctx.sources.filter((x) => x.kind === "site")][0]
+  if (!s || !ctx.lead) return null
+  const clip = (t: string, n: number) => (t.length > n ? `${t.slice(0, n - 1)}…` : t)
+  // TED excerpt: '2026-08-24 contract award: "<title>". Buyer: …. Tenderer/winner incl. <names>.' (lib/live/ted.ts)
+  const date = s.excerpt.match(/^\d{4}-\d{2}-\d{2}/)?.[0]
+  const title = s.excerpt.match(/"([^"]+)"/)?.[1]
+  const won = s.excerpt.match(/Tenderer\/winner incl\. (.+?)\.?$/)?.[1]
+  const text = s.kind === "site" ? `From your own site: ${clip(s.excerpt, 200)}`
+    : won && title ? `On the public record (TED${date ? `, ${date}` : ""}): ${won} won "${clip(title, 140)}".` : `On the public record (TED): ${clip(s.excerpt, 220)}`
+  return { text, source_ids: [s.id] }
 }
 
 const savePage = (pageId: string, fields: Record<string, unknown>) => {
@@ -50,14 +67,16 @@ const savePage = (pageId: string, fields: Record<string, unknown>) => {
 // Starts the night path and returns at once; `done` settles when it finishes. A "night_path" run (subject = page id)
 // wraps the stages so /hq can show running / ok / error, and a crash is recorded there instead of escaping.
 // recipient: who the page is framed for ("COO", "CFO", or the role met); null keeps "Made for <Company>".
-export function startNightPath(companyId: string, leadId?: string | null, recipient?: string | null): { page_id: string; slug: string; done: Promise<{ page_id: string; slug: string }> } {
+// rewrites: skeptic-driven rewrites (default 1, the cron). "Run now" from /hq passes 0: someone is waiting, and a rewrite
+// costs ~9 s for 0-1 point on min(stop, read, reply) (PROCESS.md); the score shown is still the page's real one.
+export function startNightPath(companyId: string, leadId?: string | null, recipient?: string | null, rewrites = REWRITES): { page_id: string; slug: string; done: Promise<{ page_id: string; slug: string }> } {
   const ctx = loadContext(companyId, leadId)
   const pageId = uid("page")
   const slug = uid("p")
-  const letter: PageLetter = { recipient: recipient?.trim().slice(0, 60) || null, scale: null, checked: null, questions: [] }
+  const letter: PageLetter = { recipient: recipient?.trim().slice(0, 60) || null, scale: null, checked: null, why: null, path: null, questions: [] }
   insert("pages", { id: pageId, slug, company_id: companyId, lead_id: ctx.lead?.id ?? null, status: "draft", script: [], skeptic: [], letter, created_at: now() })
   const runId = startRun("night_path", pageId, "pipeline")
-  const done = build(ctx, pageId, slug, letter).then(
+  const done = build(ctx, pageId, slug, letter, rewrites).then(
     () => { endRun(runId, "ok", `/p/${slug}`); return { page_id: pageId, slug } },
     (e) => {
       const msg = e instanceof Error ? e.message : String(e)
@@ -77,7 +96,7 @@ export const runNightPath = (companyId: string, leadId?: string | null, recipien
 // 3.5 s on average) and on the two demo pages two rewrites moved min(stop, read, reply) 4 -> 5 and 4 -> 4 (PROCESS.md).
 const REWRITES = 1
 
-async function build(ctx: NightContext, pageId: string, slug: string, letter: PageLetter) {
+async function build(ctx: NightContext, pageId: string, slug: string, letter: PageLetter, rewrites: number) {
   const companyId = ctx.company.id
   const live = hasKey()
 
@@ -87,17 +106,18 @@ async function build(ctx: NightContext, pageId: string, slug: string, letter: Pa
   letter.scale = scaleSrc ? scaleClaim(scaleSrc, ctx.company.name) : null
   const withScale = scaleSrc ? loadContext(companyId, ctx.lead?.id) : ctx
 
-  // 1. research -> 1-3 cards, the "what we checked" line, and (no lead) the questions
-  const found = live ? await research(withScale, pageId) : { opportunities: offlineOpps(withScale, pageId), checked: null, questions: [] }
+  // 1. research -> 1-3 cards, card 1's company-level "why" and pilot "path" lines, and (no lead) the questions
+  const found = live ? await research(withScale, pageId) : { opportunities: offlineOpps(withScale, pageId), why: offlineWhy(withScale), path: null, questions: [] }
   const opps = found.opportunities
-  letter.checked = found.checked
+  letter.why = found.why
+  letter.path = found.path
   letter.questions = found.questions
   opps.forEach((o, i) => insert("opportunities", { id: uid("opp"), page_id: pageId, title: o.title, claim: o.claim, formula: o.formula, position: i }))
   savePage(pageId, { letter })
   const fresh = loadContext(companyId, ctx.lead?.id) // researcher tools may have added sources
 
   // 2. script (sanitized and fitted inside), 3. skeptic loop (REWRITES rewrites, every round stored)
-  const extra = { recipient: letter.recipient, questions: letter.questions }
+  const extra = { recipient: letter.recipient, questions: letter.questions, why: letter.why, path: letter.path }
   let lines = live ? (await writeScript(fresh, pageId, opps, undefined, extra)).lines : offlineScript(fresh, pageId, opps)
   savePage(pageId, { script: lines })
   const rounds: SkepticScore[] = []
@@ -106,7 +126,7 @@ async function build(ctx: NightContext, pageId: string, slug: string, letter: Pa
       const { score } = await skepticScore(pageId, ctx.company.name, opps, lines, letter)
       rounds.push(score)
       savePage(pageId, { skeptic: rounds })
-      if (minScore(score) >= BAR || round >= REWRITES) break
+      if (minScore(score) >= BAR || round >= rewrites) break
       lines = (await writeScript(fresh, pageId, opps, { previous: lines, score }, extra)).lines
       savePage(pageId, { script: lines })
     }

@@ -121,10 +121,13 @@
 }
 .fwdBtn:hover { border-color: var(--accent); }
 
-/* what we checked: the public evidence behind the same process, and the company's size */
-.checked { margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 15px; color: var(--soft); }
-.checked p { margin: 6px 0 0; }
-.checkedH { margin: 0; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; color: var(--soft); }
+/* card 1: the company-level reason (a public signal), and the pilot path under the calculator */
+.why { margin: 14px 0 0; padding: 12px 16px; background: var(--accent-soft); border-radius: 10px; color: var(--ink); font: 17px/1.5 var(--serif); }
+.path { margin: 14px 0 0; font-size: 15px; line-height: 1.55; color: var(--soft); }
+.whyLabel { display: block; margin-bottom: 2px; font: 600 12px/1.4 var(--font-sans, inherit); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+/* what we checked: one compact line, every source by kind and date */
+.checked { margin: 32px 0 0; padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px; line-height: 1.55; color: var(--muted); }
+.checkedH { margin-right: 8px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; color: var(--soft); }
 .questions { margin: 14px 0 0; padding-left: 22px; display: grid; gap: 12px; font: 18px/1.5 var(--serif); color: var(--ink); }
 .demoNote { margin: 8px 0 0; font-size: 13px; color: var(--warn, var(--muted)); }
 
@@ -161,7 +164,7 @@
 .foot strong { color: var(--soft); }
 .sources { margin: 14px 0 0; padding-left: 22px; }
 .sources li { margin: 4px 0; }
-.srcLink { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+.srcLink { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-align: left; vertical-align: top; } /* a long TED title wraps; keep the list number on its first line */
 .meta { margin-top: 14px !important; font-size: 13px; }
 
 @media (max-width: 600px) {
