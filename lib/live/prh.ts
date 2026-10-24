@@ -86,6 +86,9 @@ async function prhGet(params: Record<string, string>): Promise<{ url: string; co
   if (res.status === 404) return { url, companies: [] }
   if (!res.ok) throw new Error(res.status === 429 ? "PRH is rate-limiting us, try again in a minute" : `PRH ${res.status}`)
   const j = (await res.json()) as { companies?: PrhCompany[] }
+  // A name search returns full records: file each under its Y-tunnus too, so the scout's loadCompany() right after
+  // an auto-pick is served from memory. One PRH request per company instead of two within a second (cold run, PROCESS).
+  for (const c of j.companies ?? []) cache.set(`${BASE}?${new URLSearchParams({ businessId: c.businessId.value })}`, { at: Date.now(), companies: [c] })
   cache.set(url, { at: Date.now(), companies: j.companies ?? [] })
   return { url, companies: j.companies ?? [] }
 }
