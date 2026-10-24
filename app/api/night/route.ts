@@ -14,8 +14,13 @@ export async function POST(req: Request) {
   const leadId = typeof body.lead_id === "string" && body.lead_id ? body.lead_id : null
   const recipient = typeof body.recipient === "string" ? body.recipient : null
   if (!get("SELECT id FROM companies WHERE id = ?", companyId)) return Response.json({ error: "unknown company_id" }, { status: 400 })
+  // The page is built on what someone at the company said. Without a note it is only questions from the public record
+  // and reads weak (Tokmanni, no note: reader test 3/4/2), so a person-started run insists on one. Cron only runs leads.
+  if (!get("SELECT id FROM leads WHERE company_id = ? AND (? IS NULL OR id = ?)", companyId, leadId, leadId))
+    return Response.json({ error: "No hallway note for this company yet. Save one on /capture first: the page costs the task they described, and without one it is only questions." }, { status: 400 })
   try {
-    const { page_id, slug, done } = startNightPath(companyId, leadId, recipient)
+    // 0 rewrites: someone is watching /hq wait for this one (see startNightPath).
+    const { page_id, slug, done } = startNightPath(companyId, leadId, recipient, 0)
     after(() => done.catch(() => {})) // failure is already recorded as an error night_path run
     return Response.json({ page_id, slug }, { status: 202 })
   } catch (e) {

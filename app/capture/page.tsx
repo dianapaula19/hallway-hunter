@@ -316,6 +316,9 @@ export default function CapturePage() {
                 <span>Demo note: invented for a demo, and labelled that way on every page. Untick only for a real conversation.</span>
               </label>
               <button className={s.primary} disabled={!!busy || !transcript.trim()} onClick={saveLead}>Save lead</button>
+              <p className={s.meta}>{leads.length
+                ? <>Next: <a href={withBase(`/hq?company=${encodeURIComponent(company.id)}`)}>make the page on /hq</a> (Run, about 20-30 s).</>
+                : "The overnight page is built on this note: it costs the task they described. No note, no page."}</p>
               {leads.length > 0 && (
                 <ul className={s.leads}>
                   {leads.map((l) => (
