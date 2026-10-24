@@ -153,6 +153,7 @@ function ApprovalCard({ a }: { a: Board["approvals"][number] }) {
   const [body, setBody] = useState(a.payload.body)
   const [note, setNote] = useState("")
   const [out, setOut] = useState("")
+  const [sending, setSending] = useState(false) // a double click must not POST the decision twice (second one 409s)
   const blocked = !!a.compliance && !a.compliance.ok
   const rounds = a.skeptic ?? []
   const last = rounds.at(-1)
@@ -160,15 +161,19 @@ function ApprovalCard({ a }: { a: Board["approvals"][number] }) {
   const cancel = () => { setMode(""); setSubject(a.payload.subject); setBody(a.payload.body); setNote("") }
 
   const act = async (action: "approve" | "edit" | "kill") => {
-    const r = await fetch(withBase(`/api/approvals/${a.id}`), {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action, note, final_payload: action === "edit" ? { subject, body } : undefined }),
-    })
-    const j = await r.json()
-    if (r.ok && process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) {
-      posthog.capture("approval_decided", { action })
-    }
-    setOut(r.ok ? j.status : j.error)
+    if (sending) return
+    setSending(true)
+    try {
+      const r = await fetch(withBase(`/api/approvals/${a.id}`), {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action, note, final_payload: action === "edit" ? { subject, body } : undefined }),
+      })
+      const j = await r.json()
+      if (r.ok && process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) {
+        posthog.capture("approval_decided", { action })
+      }
+      setOut(r.ok ? j.status : j.error)
+    } catch { setOut("Lost the connection; reload to see whether it went through.") } finally { setSending(false) }
   }
 
   return (
@@ -200,12 +205,12 @@ function ApprovalCard({ a }: { a: Board["approvals"][number] }) {
 
       <div className={s.row}>
         {mode === "" && <>
-          <button className={s.primary} disabled={blocked} title={blocked ? "Blocked by compliance" : ""} onClick={() => act("approve")}>Approve</button>
+          <button className={s.primary} disabled={blocked || sending} title={blocked ? "Blocked by compliance" : ""} onClick={() => act("approve")}>Approve</button>
           <button disabled={blocked} onClick={() => setMode("edit")}>Edit</button>
           <button onClick={() => setMode("kill")}>Kill</button>
         </>}
-        {mode === "edit" && <><button className={s.primary} disabled={blocked} onClick={() => act("edit")}>Save as edited</button><button onClick={cancel}>Cancel</button></>}
-        {mode === "kill" && <><button className={s.danger} disabled={!note.trim()} onClick={() => act("kill")}>Kill page</button><button onClick={cancel}>Cancel</button></>}
+        {mode === "edit" && <><button className={s.primary} disabled={blocked || sending} onClick={() => act("edit")}>Save as edited</button><button onClick={cancel}>Cancel</button></>}
+        {mode === "kill" && <><button className={s.danger} disabled={!note.trim() || sending} onClick={() => act("kill")}>Kill page</button><button onClick={cancel}>Cancel</button></>}
         {out && <span className={s.muted}>{out}</span>}
       </div>
     </article>
