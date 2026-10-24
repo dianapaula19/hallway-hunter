@@ -164,7 +164,7 @@
 .foot strong { color: var(--soft); }
 .sources { margin: 14px 0 0; padding-left: 22px; }
 .sources li { margin: 4px 0; }
-.srcLink { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+.srcLink { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-align: left; vertical-align: top; } /* a long TED title wraps; keep the list number on its first line */
 .meta { margin-top: 14px !important; font-size: 13px; }
 
 @media (max-width: 600px) {

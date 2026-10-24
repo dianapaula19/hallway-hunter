@@ -46,7 +46,8 @@ export function headline(top: Opportunity | undefined): { h1: string[]; eur: str
   const eurN = eurPerYear(f)
   const eur = `About ${fiEur(eurN)} a year to win back`
   const assumed = (top.claim.text.match(/\bassum\w*|\bpilot team\b/gi) ?? []).length
-  if (assumed >= 2) return { h1: [top.title.replace(/[.\s]*$/, ".")], eur, label: f.label }
+  // No input sourced at all ("sector estimate", e.g. the offline template's defaults): the hours are a guess, not a headline.
+  if (assumed >= 2 || f.label === "sector estimate") return { h1: [top.title.replace(/[.\s]*$/, ".")], eur, label: f.label }
   if (eurN < SMALL_EUR) return { h1: [`${fi(hours)} hours a week by hand.`], eur, label: f.label }
   return { h1: [`${fi(hours)} hours a week by hand.`, `${eur}.`], eur: null, label: f.label }
 }
@@ -99,6 +100,8 @@ if (import.meta.main) {
   assert.deepEqual(headline(opp("Two people retype each order.", 7.5, 2))!.h1, ["15 hours a week by hand."])
   assert.equal(headline(opp("Two people retype each order.", 7.5, 2))!.eur, `About ${fiEur(17250)} a year to win back`)
   assert.equal(headline(opp("Forty people retype.", 7.5, 40))!.h1.length, 2)
+  const guess = opp("Two people retype each order.", 6, 3); guess.formula.label = "sector estimate"
+  assert.deepEqual(headline(guess)!.h1, ["Mill visit reports written twice."])
   const src = (kind: Source["kind"], excerpt: string, url: string | null, at = "2026-10-24T10:00:00Z") => ({ kind, excerpt, url, fetched_at: at })
   // en-GB in Node 24's ICU writes "Sept"
   assert.deepEqual(checkedLine([
