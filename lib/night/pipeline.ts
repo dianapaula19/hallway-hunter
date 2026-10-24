@@ -20,7 +20,9 @@ function offlineOpps(ctx: NightContext, pageId: string): DraftOpportunity[] {
   const hallway = ctx.sources.find((s) => s.kind === "hallway")
   const others = ctx.sources.filter((s) => s.kind !== "hallway")
   const raw: DraftOpportunity[] = []
-  if (ctx.lead && hallway) raw.push({ title: `Take the ${ctx.lead.pain} off the team`, claim: { text: `A ${ctx.lead.role} described it in the hallway: ${ctx.lead.pain}.`, source_ids: [hallway.id] }, formula: normalizeFormula({ hours_per_week: 6, people: 3, input_source_ids: [hallway.id] }, known) })
+  // The template does not read hours or headcount out of the note, so its inputs are defaults: no source, "sector estimate".
+  const pain = ctx.lead?.pain.replace(/[.\s]+$/, "") ?? ""
+  if (ctx.lead && hallway) raw.push({ title: (pain.split(/[,;:]/)[0] || "The task from the hallway").slice(0, 70), claim: { text: `A ${ctx.lead.role} described it in the hallway: ${pain.charAt(0).toLowerCase() + pain.slice(1)}.`, source_ids: [hallway.id] }, formula: normalizeFormula({ hours_per_week: 6, people: 3 }, known) })
   // Only the hallway card has real evidence of a manual task; a public signal stands in only when there is no lead.
   if (!raw.length) for (const s of others.slice(0, 1)) raw.push({ title: s.title.slice(0, 60), claim: { text: `Signal worth a closer look: ${s.excerpt.split(/(?<=\.)\s/)[0].slice(0, 160)}`, source_ids: [s.id] }, formula: normalizeFormula({}, known) })
   const { kept } = sanitizeClaims(ctx.company.id, raw.map((o) => o.claim), runId)
@@ -34,12 +36,27 @@ function offlineScript(ctx: NightContext, pageId: string, opps: DraftOpportunity
   const hallway = ctx.sources.find((s) => s.kind === "hallway")
   const lines: ScriptLine[] = []
   if (ctx.lead && hallway) lines.push({ host: "A", text: `A ${ctx.lead.role} told a Velho consultant in a conference hallway: “${ctx.lead.quote}”`, source_ids: [hallway.id] })
-  opps.forEach((o, i) => lines.push({ host: i % 2 ? "B" : "A", text: `${o.title}. ${o.claim.text} Our ${o.formula.label}: about ${fmtEur(eurPerYear(o.formula))} a year, and the formula is on the page.`, source_ids: o.claim.source_ids }))
+  opps.forEach((o, i) => lines.push({ host: i % 2 ? "B" : "A", text: `Our ${o.formula.label} for that: about ${fmtEur(eurPerYear(o.formula))} a year, from assumed inputs you can change on the page.`, source_ids: o.claim.source_ids }))
   lines.push({ host: "B", text: CLOSE, source_ids: [] })
   const kept = fitScript(sanitizeScript(ctx.company.id, lines, runId).kept)
   logStep(runId, "info", "offline", "no ANTHROPIC_API_KEY: template script", kept.length)
   endRun(runId, "ok", `${kept.length} lines`)
   return kept
+}
+
+// No model to draw the link, so the template only states the newest public signal (TED award or site page) as a fact.
+function offlineWhy(ctx: NightContext): PageLetter["why"] {
+  const ted = ctx.sources.filter((x) => x.kind === "ted").sort((a, b) => b.excerpt.localeCompare(a.excerpt)) // excerpts start with the date
+  const s = [...ted, ...ctx.sources.filter((x) => x.kind === "site")][0]
+  if (!s || !ctx.lead) return null
+  const clip = (t: string, n: number) => (t.length > n ? `${t.slice(0, n - 1)}…` : t)
+  // TED excerpt: '2026-08-24 contract award: "<title>". Buyer: …. Tenderer/winner incl. <names>.' (lib/live/ted.ts)
+  const date = s.excerpt.match(/^\d{4}-\d{2}-\d{2}/)?.[0]
+  const title = s.excerpt.match(/"([^"]+)"/)?.[1]
+  const won = s.excerpt.match(/Tenderer\/winner incl\. (.+?)\.?$/)?.[1]
+  const text = s.kind === "site" ? `From your own site: ${clip(s.excerpt, 200)}`
+    : won && title ? `On the public record (TED${date ? `, ${date}` : ""}): ${won} won "${clip(title, 140)}".` : `On the public record (TED): ${clip(s.excerpt, 220)}`
+  return { text, source_ids: [s.id] }
 }
 
 const savePage = (pageId: string, fields: Record<string, unknown>) => {
@@ -90,7 +107,7 @@ async function build(ctx: NightContext, pageId: string, slug: string, letter: Pa
   const withScale = scaleSrc ? loadContext(companyId, ctx.lead?.id) : ctx
 
   // 1. research -> 1-3 cards, card 1's company-level "why" and pilot "path" lines, and (no lead) the questions
-  const found = live ? await research(withScale, pageId) : { opportunities: offlineOpps(withScale, pageId), why: null, path: null, questions: [] }
+  const found = live ? await research(withScale, pageId) : { opportunities: offlineOpps(withScale, pageId), why: offlineWhy(withScale), path: null, questions: [] }
   const opps = found.opportunities
   letter.why = found.why
   letter.path = found.path
