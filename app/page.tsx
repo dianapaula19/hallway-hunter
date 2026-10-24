@@ -1,6 +1,8 @@
 import Link from "next/link"
-import { all } from "@/lib/db.ts"
-import type { PageStatus } from "@/lib/types.ts"
+import { all, get } from "@/lib/db.ts"
+import { isConfidential } from "@/lib/night/compliance.ts"
+import type { Lead, Opportunity, PageStatus } from "@/lib/types.ts"
+import { headline } from "./p/[slug]/letter.ts"
 import s from "./home.module.css"
 
 export const dynamic = "force-dynamic"
@@ -13,95 +15,100 @@ const latest = () =>
      ORDER BY p.created_at DESC LIMIT 5`,
   )
 
+// The before/after artefact: the newest page that is approved or waiting for approval, drawn small in markup.
+function sample() {
+  const p = get<{ id: string; slug: string; name: string; lead_id: string | null }>(
+    `SELECT p.id, p.slug, c.name, p.lead_id FROM pages p JOIN companies c ON c.id = p.company_id
+     WHERE p.status IN ('approved', 'pending_approval') ORDER BY p.created_at DESC LIMIT 1`,
+  )
+  if (!p) return null
+  const lead = p.lead_id ? get<Lead>("SELECT * FROM leads WHERE id = ?", p.lead_id) ?? null : null
+  const top = get<Opportunity>("SELECT * FROM opportunities WHERE page_id = ? ORDER BY position LIMIT 1", p.id)
+  return {
+    slug: p.slug,
+    name: clean(p.name),
+    role: lead?.role ?? null,
+    quote: lead && !isConfidential(lead) ? lead.quote : null,
+    head: headline(top),
+  }
+}
+
+const clean = (name: string) => name.replace(/\s*\(synthetic\)\s*/i, "")
+
+// Public wording: no internal queue states on the front page.
 const STATUS: Record<PageStatus, string> = {
   draft: "Being written",
-  pending_approval: "Waiting for a person to approve",
-  approved: "Approved by Velho",
+  pending_approval: "In review",
+  approved: "Approved",
   killed: "Withdrawn",
 }
 
-const when = (iso: string) =>
-  new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Helsinki" })
-
-const svg = { width: 40, height: 40, viewBox: "0 0 40 40", fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true } as const
-
-const STEPS = [
-  {
-    when: "At the stand",
-    title: "Snap their badge",
-    text: "A photo of a badge or business card, or just the company name. We find the right legal entity in the Finnish trade register.",
-    icon: (
-      <svg {...svg}><rect x="9" y="8" width="22" height="27" rx="3" /><path d="M16 8V5h8v3" /><circle cx="20" cy="18" r="4" /><path d="M14 29c1.2-3 3.4-4.5 6-4.5s4.8 1.5 6 4.5" /></svg>
-    ),
-  },
-  {
-    when: "In about 10 seconds",
-    title: "Read a cited brief",
-    text: "120 words before the conversation ends: what they do, recent signals, openers and what not to say. Every line links to its source.",
-    icon: (
-      <svg {...svg}><path d="M10 5h15l6 6v24H10z" /><path d="M25 5v6h6" /><path d="M15 17h11M15 22h11M15 27h6" /><circle cx="27" cy="27" r="2.4" fill="currentColor" stroke="none" /></svg>
-    ),
-  },
-  {
-    when: "Overnight",
-    title: "A page for them",
-    text: "Their own words, one to three costed processes to fix, one yes/no question and a short audio briefing. A person at Velho approves it first.",
-    icon: (
-      <svg {...svg}><rect x="6" y="6" width="20" height="26" rx="2" /><path d="M11 13h10M11 18h10M11 23h6" /><path d="M30 14v12M34 17v6M26 19v2" /><circle cx="29" cy="31" r="5" fill="var(--card)" /><path d="m26.8 31 1.6 1.6 3-3.2" /></svg>
-    ),
-  },
-]
+const when = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Europe/Helsinki" })
 
 export default function Home() {
   const pages = latest()
+  const ex = sample()
   return (
     <div className="paper">
       <main className={s.wrap}>
         <header className={s.top}>
-          <span className={s.brand}>Hallway Hunter</span>
-          <span className={s.by}>by Velho</span>
+          {/* Placeholder wordmark, pending Velho's real brand (PROCESS.md). */}
+          <span className={s.mark}>Velho</span>
+          <span className={s.product}>Hallway Hunter</span>
         </header>
 
         <section className={s.hero}>
-          <p className={s.eyebrow}>For Velho consultants at trade fairs</p>
-          <h1 className={s.h1}>Turn a hallway handshake into a page made for their company.</h1>
+          <h1 className={s.h1}>From a badge in the hallway to a page made for their company, by the next morning.</h1>
           <p className={s.lede}>
-            Snap a badge, read a cited brief before the conversation ends, and wake up to a one-page draft that a person at Velho approves before anything leaves.
+            Snap a badge and read a cited brief before the conversation ends. Overnight, Velho&apos;s AI analysts draft a one-page letter with their own words and a costed first step. A person at Velho approves it before anything leaves.
           </p>
           <Link href="/capture" className={s.cta}>Try it on any Finnish company <span aria-hidden>→</span></Link>
         </section>
 
-        <section aria-labelledby="how">
-          <h2 id="how" className={s.h2}>How it works</h2>
-          <ol className={s.steps}>
-            {STEPS.map((x, i) => (
-              <li key={x.title} className={s.step}>
-                <div className={s.stepIcon}>{x.icon}</div>
-                <p className={s.stepWhen}><span>{String(i + 1).padStart(2, "0")}</span> {x.when}</p>
-                <h3 className={s.h3}>{x.title}</h3>
-                <p className={s.stepText}>{x.text}</p>
-              </li>
-            ))}
-          </ol>
-        </section>
+        {ex && (
+          <figure className={s.artefact}>
+            <div className={s.side}>
+              <div className={s.badge} aria-label={`Conference badge: ${ex.role ?? "visitor"}, ${ex.name}`}>
+                <span className={s.slot} aria-hidden />
+                <span className={s.badgeTop}>Visitor</span>
+                <span className={s.badgeName} aria-hidden />
+                {ex.role && <span className={s.badgeRole}>{ex.role}</span>}
+                <span className={s.badgeCo}>{ex.name}</span>
+              </div>
+              <p className={s.caption}><strong>At the stand.</strong> A photo of the badge, or just the company name. Names are never kept, only the role.</p>
+            </div>
+
+            <div className={s.arrow} aria-hidden><span>overnight</span></div>
+
+            <div className={s.side}>
+              <Link href={`/p/${ex.slug}`} className={s.mini} aria-label={`Open the page made for ${ex.name}`}>
+                <span className={s.miniHead}><span className={s.miniMark}>Velho</span><span>Velho draft · by Velho&apos;s AI analysts</span></span>
+                <span className={s.miniEyebrow}>Made for {ex.name}</span>
+                <span className={s.miniH1}>
+                  {ex.head ? <><span>{ex.head.hours} hours a week by hand.</span> <span>About <span className={s.nowrap}>{ex.head.eur} a year</span> to win back.</span></> : <>A first look at {ex.name}</>}
+                </span>
+                {ex.quote && <span className={s.miniQuote}>“{ex.quote}”</span>}
+                <span className={s.miniCalc} aria-hidden><i /><i /><i /><i /><i /></span>
+                <span className={s.miniYes}>Reply yes</span>
+              </Link>
+              <p className={s.caption}><strong>Next morning.</strong> Their words, the cost worked out and editable, one question. A person at Velho approves it first.</p>
+            </div>
+          </figure>
+        )}
 
         {pages.length > 0 && (
           <section aria-labelledby="latest" className={s.latest}>
             <h2 id="latest" className={s.h2}>Latest drafts</h2>
             <ul className={s.drafts}>
-              {pages.map((p) => {
-                const synthetic = /\(synthetic\)/i.test(p.name)
-                return (
-                  <li key={p.slug}>
-                    <Link href={`/p/${p.slug}`} className={s.draft}>
-                      <span className={s.made}>Made for</span>
-                      <span className={s.company}>{p.name.replace(/\s*\(synthetic\)\s*/i, "")}</span>
-                      <span className={s.status} data-status={p.status}>{STATUS[p.status] ?? p.status}</span>
-                      <span className={s.date}>{when(p.created_at)}{synthetic && " · synthetic demo"}</span>
-                    </Link>
-                  </li>
-                )
-              })}
+              {pages.map((p) => (
+                <li key={p.slug}>
+                  <Link href={`/p/${p.slug}`} className={s.draft}>
+                    <span className={s.company}>{clean(p.name)}</span>
+                    <span className={s.status}>{STATUS[p.status] ?? p.status}</span>
+                    <span className={s.date}>{when(p.created_at)}{/\(synthetic\)/i.test(p.name) && " · synthetic demo"}</span>
+                  </Link>
+                </li>
+              ))}
             </ul>
           </section>
         )}
