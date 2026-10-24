@@ -149,6 +149,14 @@ Append-only, timestamped (Europe/Helsinki). Each entry covers: what we **asked**
     - `/P/<slug>` (capital P) is a 404, now the friendly one, rather than a redirect.
     - The server keeps running a scout after the client aborts, because `runAgent` takes no signal. That is a shared-kernel change.
     - Bahn items, which are another lane.
+- **Clumsy-user re-run (3 Velho personas, after the fixes).** The first run's PostHog numbers were empty for two reasons, both in the test harness, not the app. posthog-js sends no captures when `navigator.webdriver` is true, and none when the user agent says "HeadlessChrome" (its bot filter). The scripts now hide both, and every persona's event batches reach PostHog: fair-floor 38 POSTs to `/e/`, lost-visitor 40, skeptic-partner 54, all 200. Session recording sent 0 POSTs because it is switched off in the PostHog project (`sessionRecording: false` in the remote config). Turn it on there if replays are wanted.
+  - Budget: 4 PRH lookups (1 badge photo, 3 typed), spaced 16 s apart across processes. 4 model-backed actions: badge vision, the scout it auto-ran, one lead, one night run. The analytics re-run blocked every PRH- and model-backed POST in the browser. The test lead was deleted (a second delete returns 404). The test night page `p_v7TGcPIY` was killed.
+  - Found:
+    - A double click on "Kill page" (also Approve and "Save as edited") POSTed the decision twice. The second POST got a 409 and logged a console error.
+  - Fixed: the approval card disables its decision buttons while the request is in flight, and a lost connection shows a message instead of an unhandled rejection. With a mocked approvals endpoint, a double click now sends 1 POST.
+  - Left:
+    - "Cancel keeps the half-finished edit" came back from the script, but it is a false positive: the original subject already ends in "Velho draft", which matches the script's `/draft$/` check.
+    - A chip tapped 6 px to its right on a phone opens anyway, because Chrome adjusts touch targets. A second tap then closes it. This is the 18 px chip size already on the left list.
 
 ## Eval (before / after)
 
