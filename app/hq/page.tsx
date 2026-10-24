@@ -43,13 +43,17 @@ export default function HQ() {
   const runNight = async () => {
     const co = company || b?.companies[0]?.id
     if (!co) return
-    setBusy("night"); setMsg("Night path running… watch the runs below.")
-    const r = await fetch(withBase("/api/night"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ company_id: co, lead_id: lead || undefined }) })
-    const j = await r.json()
-    if (r.ok && process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) {
-      posthog.capture("night_path_completed", { has_selected_lead: Boolean(lead) })
-    }
-    setBusy(""); setMsg(r.ok ? `Done: /p/${j.slug} is waiting for approval.` : `Failed: ${j.error}`)
+    const name = b?.companies.find((c) => c.id === co)?.name
+    setBusy("night"); setMsg(`Night path running for ${name}… watch the runs below.`)
+    try {
+      const r = await fetch(withBase("/api/night"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ company_id: co, lead_id: lead || undefined }) })
+      const j = await r.json()
+      if (r.ok && process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) {
+        posthog.capture("night_path_completed", { has_selected_lead: Boolean(lead) })
+      }
+      setMsg(r.ok ? `Done: the ${name} page /p/${j.slug} is waiting for approval.` : `Failed: ${j.error}`)
+    } catch { setMsg("Failed: lost the connection to the server. Check the runs below before running again.") }
+    setBusy("")
   }
 
   const leads = b?.leads.filter((l) => l.company_id === (company || b?.companies[0]?.id)) ?? []
@@ -68,10 +72,10 @@ export default function HQ() {
       <section className={s.panel}>
         <h2 className={s.h2}>Run night path now</h2>
         <div className={s.row}>
-          <select value={company} onChange={(e) => { setCompany(e.target.value); setLead("") }}>
+          <select value={company} disabled={!!busy} aria-label="Company" onChange={(e) => { setCompany(e.target.value); setLead("") }}>
             {b?.companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <select value={lead} onChange={(e) => setLead(e.target.value)}>
+          <select value={lead} disabled={!!busy} aria-label="Lead" onChange={(e) => setLead(e.target.value)}>
             <option value="">Latest lead (or none)</option>
             {leads.map((l) => <option key={l.id} value={l.id}>{l.role} · {time(l.created_at)}</option>)}
           </select>
@@ -153,6 +157,8 @@ function ApprovalCard({ a }: { a: Board["approvals"][number] }) {
   const rounds = a.skeptic ?? []
   const last = rounds.at(-1)
 
+  const cancel = () => { setMode(""); setSubject(a.payload.subject); setBody(a.payload.body); setNote("") }
+
   const act = async (action: "approve" | "edit" | "kill") => {
     const r = await fetch(withBase(`/api/approvals/${a.id}`), {
       method: "POST", headers: { "content-type": "application/json" },
@@ -179,6 +185,7 @@ function ApprovalCard({ a }: { a: Board["approvals"][number] }) {
           </span>
         ))}
         {!rounds.length && <span className={s.warn}>Skeptic: not run</span>}
+        {last && Math.min(last.stop, last.read, last.reply) < 7 && <span className={s.warn}>Internal: below bar, min {Math.min(last.stop, last.read, last.reply)}/10</span>}
       </div>
       {blocked && <ul className={s.issues}>{a.compliance!.issues.map((x, i) => <li key={i}>{x}</li>)}</ul>}
       {last?.notes && <p className={s.muted}>CEO notes: {last.notes}</p>}
@@ -197,8 +204,8 @@ function ApprovalCard({ a }: { a: Board["approvals"][number] }) {
           <button disabled={blocked} onClick={() => setMode("edit")}>Edit</button>
           <button onClick={() => setMode("kill")}>Kill</button>
         </>}
-        {mode === "edit" && <><button className={s.primary} disabled={blocked} onClick={() => act("edit")}>Save as edited</button><button onClick={() => setMode("")}>Cancel</button></>}
-        {mode === "kill" && <><button className={s.danger} disabled={!note.trim()} onClick={() => act("kill")}>Kill page</button><button onClick={() => setMode("")}>Cancel</button></>}
+        {mode === "edit" && <><button className={s.primary} disabled={blocked} onClick={() => act("edit")}>Save as edited</button><button onClick={cancel}>Cancel</button></>}
+        {mode === "kill" && <><button className={s.danger} disabled={!note.trim()} onClick={() => act("kill")}>Kill page</button><button onClick={cancel}>Cancel</button></>}
         {out && <span className={s.muted}>{out}</span>}
       </div>
     </article>

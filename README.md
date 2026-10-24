@@ -69,7 +69,7 @@ Model: `ANTHROPIC_MODEL`, default `claude-sonnet-5-5`. Every call goes through `
    - Edit "people" on a card and the euro estimate recalculates.
    - Every figure says "estimate" or "sector estimate".
 7. **Back in `/hq`:**
-   - Show the Skeptic-CEO scores. They are honest and often below the bar, and then the subject line is flagged "[below bar]".
+   - Show the Skeptic-CEO scores. They are honest and often below the bar, and then /hq marks the card "below bar" (internal only, not in the draft subject).
    - Approve to create a **local draft to our own inbox**, or Kill (a note is required).
    - Nothing is ever sent.
 
@@ -101,7 +101,7 @@ node matrix/agent-ops/feed.mjs --check
 
 ## Known limits
 
-- The Skeptic-CEO gate scores real pages stop 5-6, read 6-7, reply 4-5 out of 10. Cutting the guessed cards lifted read to 7. Reply stayed at 4-5 through six different asks (meeting, teardown, sample, mock-up), so we treat it as the ceiling for an unsolicited page and do not pad. Such pages go to approval flagged "below bar".
+- The Skeptic-CEO gate scores real pages stop 5-6, read 6-7, reply 4-5 out of 10. Cutting the guessed cards lifted read to 7. Reply stayed at 4-5 through six different asks (meeting, teardown, sample, mock-up), so we treat it as the ceiling for an unsolicited page and do not pad. Such pages go to approval marked "below bar" on /hq.
 - The name scrub is regex plus a model-provided name list. Finnish consonant-gradation forms (Pekka → Pekan) depend on the model listing the name.
 - The site guard checks hostnames only, with no DNS resolution.
 - The optional Telegram bot is not built. `npm run bot` only prints a message and exits.

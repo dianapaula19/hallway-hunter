@@ -86,7 +86,6 @@ async function build(ctx: NightContext, pageId: string, slug: string) {
     }
   }
   const final = rounds.at(-1)
-  const belowBar = !final || minScore(final) < BAR
 
   // 4. compliance (deterministic)
   const cRun = startRun("compliance", pageId, "deterministic")
@@ -95,9 +94,9 @@ async function build(ctx: NightContext, pageId: string, slug: string) {
   endRun(cRun, "ok", compliance.ok ? "ok" : `${compliance.issues.length} issue(s)`)
 
   // 5. approval (PENDING). Nothing is sent anywhere; approve only creates a local draft to our own inbox.
-  const flag = belowBar ? (final ? ` [below bar: min ${minScore(final)}/10]` : " [not scored: offline]") : ""
+  // The skeptic verdict stays internal: /hq shows it from pages.skeptic, the subject the reviewer approves does not carry it.
   const payload: Approval["payload"] = {
-    subject: `Made for ${ctx.company.name}, Velho draft${flag}`,
+    subject: `Made for ${ctx.company.name}, Velho draft`,
     body: [
       `Velho draft, by Velho's AI analysts. Internal review copy.`,
       `Page: /p/${slug}`,
