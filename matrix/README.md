@@ -17,6 +17,8 @@ node matrix/box-loop.mjs --digest         # print this morning's digest from the
 node matrix/box-loop.mjs --check          # self-test
 ```
 
+**Serving under `/apps/hallway-hunter/`.** `NEXT_BASE_PATH=/apps/hallway-hunter` sets Next's `basePath` (as Matrix's `_template-next` does). Set it for **both** `npm run build` and `next start`, because `next start` re-reads `next.config.ts`. Client `fetch` and raw `<a href>` go through `withBase()` in `lib/base.ts`. Without the variable, nothing changes. One caveat: Matrix's gateway (`dispatcher.ts` on `main`, checked 2026-10-24) strips the `/apps/<slug>` prefix before proxying, and it health-checks `serve.healthCheck` on the bare port. A basePath build answers only under the prefix, so those two disagree. `deploy.sh` therefore still builds without it, and `matrix port forward 3100` is the reliable view. Turn it on once a box confirms the gateway keeps the prefix (then also set `healthCheck` to `/apps/hallway-hunter/api/health`).
+
 **Nothing is sent to any company.** The digest goes only to `TELEGRAM_CHAT_ID`, and only if that id is also in `TELEGRAM_ALLOWED_CHAT_IDS`. Matrix delivers it as a one-shot cron job. Approve, edit and kill still happen in `/hq`, and approving creates only a local draft to our own inbox.
 
 ### Agent Ops: one board for both agents
