@@ -1,6 +1,6 @@
 # Hallway Hunter
 
-A Velho hackathon entry. A Velho consultant at a conference snaps a badge, types a company name or records a voice note. Within seconds they get a **cited brief of up to 120 words** to read before the conversation (the LIVE path). Overnight, every hallway lead becomes a private **"Made for <Company>, Velho draft"** page with three opportunity cards, a euro estimate whose formula you can edit, and a ~75-second two-host audio briefing. **A human approves it before anything leaves the building** (the NIGHT path).
+A Velho hackathon entry. A Velho consultant at a conference snaps a badge, types a company name or records a voice note. Within seconds they get a **cited brief of up to 120 words** to read before the conversation (the LIVE path). Overnight, every hallway lead becomes a private **"Made for <Company>, Velho draft"** page with one to three opportunity cards (only those with real evidence), a euro estimate whose formula you can edit, one concrete question, and a two-host audio briefing of at most 75 seconds. **A human approves it before anything leaves the building** (the NIGHT path).
 
 - Every claim cites a source id from our evidence store: the PRH trade register, EU TED tenders, the company's own website, or the hallway note. A citation sanitizer drops any claim whose source it cannot find, so a gap shows as "thin data" rather than being filled in.
 - Hallway quotes are stored with a role, never a name. Names are scrubbed before storage and redacted from the agent log, and every lead has a delete button.
@@ -37,6 +37,14 @@ node lib/night/sanitize.ts            # citation sanitizer
 node lib/night/compliance.ts          # name heuristic
 ```
 
+Reset the local data (`data/hh.db` is gitignored and holds every test lead, page, run and outbox draft):
+
+```bash
+# stop npm run dev first
+rm -f data/hh.db data/hh.db-wal data/hh.db-shm && npm run seed     # everything, back to the synthetic demo
+node -e 'const d=new (require("node:sqlite").DatabaseSync)("data/hh.db");d.exec("PRAGMA foreign_keys=ON;DELETE FROM outbox;DELETE FROM approvals;DELETE FROM pages;DELETE FROM leads;DELETE FROM agent_runs")'   # keep looked-up companies and sources (PRH rate-limits re-lookups), drop the rest
+```
+
 Model: `ANTHROPIC_MODEL`, default `claude-sonnet-5-5`. Every call goes through `runAgent()` in `lib/claude.ts`, which logs each turn and tool call to `agent_runs` / `agent_steps`.
 
 ## Live demo script (about 4 minutes)
@@ -53,8 +61,9 @@ Model: `ANTHROPIC_MODEL`, default `claude-sonnet-5-5`. Every call goes through `
 4. **Voice note.** Record a short note in Finnish or English, edit the transcript and save. The lead shows a role, a quote, the pain point and a temperature, with no name. Show the delete button.
 5. **`/hq` → Run night path now** on that lead. The board fills live: researcher, showrunner, skeptic CEO (up to 2 rewrites), then compliance. It takes about 30-40 s with a key.
 6. **Open `/p/<slug>`.**
-   - The page opens with the hallway quote, attributed by role only.
-   - Press play: two browser voices read the script and the transcript highlights each line.
+   - The page opens with the hallway quote, attributed by role only, then usually one card: we only show a card a source backs.
+   - Below it, "One question": a single yes/no offer (a free one-page teardown of that process, no data, no call).
+   - Press play: two browser voices read the script, the transcript opens and highlights each line.
    - Edit "people" on a card and the euro estimate recalculates.
    - Every figure says "estimate" or "sector estimate".
 7. **Back in `/hq`:**
@@ -90,8 +99,8 @@ node matrix/agent-ops/feed.mjs --check
 
 ## Known limits
 
-- The Skeptic-CEO gate usually scores real pages 3-6/10. It mostly objects that cards 2 and 3 are inferred from public tenders rather than from the company's own words. The page goes to approval flagged "below bar" rather than being padded.
+- The Skeptic-CEO gate scores real pages stop 5-6, read 6-7, reply 4-5 out of 10. Cutting the guessed cards lifted read to 7. Reply stayed at 4-5 through six different asks (meeting, teardown, sample, mock-up), so we treat it as the ceiling for an unsolicited page and do not pad. Such pages go to approval flagged "below bar".
 - The name scrub is regex plus a model-provided name list. Finnish consonant-gradation forms (Pekka → Pekan) depend on the model listing the name.
 - The site guard checks hostnames only, with no DNS resolution.
-- The optional Telegram bot (`npm run bot`) is not written.
+- The optional Telegram bot is not built. `npm run bot` only prints a message and exits.
 - Mobile layout was checked at a real 390 px viewport in headless Chromium, not on a physical phone. Speech playback and recognition depend on the browser (Chrome or Safari).

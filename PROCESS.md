@@ -92,6 +92,25 @@ Append-only, timestamped (Europe/Helsinki). Each entry covers: what we **asked**
     - A night path that throws deletes its half-built page, so cron retries the lead.
   - Checked: typecheck, check and build; all six self-checks; every page and GET route answers 200 (an unknown slug returns 404); `/p` and `/capture` rendered at a real 390 px viewport. The lanes' "cut off on the right" was headless Chrome's 500 px minimum window, not a layout bug.
   - Not checked: `selfcheck --live` after the did-you-mean change, because PRH was refusing connections. The fallback paths were tested instead. Speech playback on a real phone was not checked.
+- **~17:30 polish pass (integrator).**
+  - Asked: stop forcing three cards, make the reply hook concrete, re-run the night path live on 2 synthetic leads, re-check compliance on model output, make `/p` something a Finnish CEO would read and forward, stub the bot, document a data reset.
+  - Changed:
+    - **1-3 cards, evidence only.** The researcher may return one card. A public signal becomes a card only if the source itself names a recurring manual task. A product sale or a site blurb is not enough. Compliance no longer flags fewer than 3 cards, only 0. Offline mode no longer pads with "signal worth a closer look" cards.
+    - **One ask.** The script ends with one yes/no question tied to card 1: a free one-page teardown of the named process within a week, no data and no call. The page shows it under the card as "One question".
+    - **Two bugs found by the live runs.** (1) The ask was said twice: the model's ask ended in "enough." rather than "?", so our fallback was appended. Now we check for any "?". (2) The researcher put a team total in `hours_per_week` (15 h for two people, which doubled the euro figure). The prompt now says per person, and the page and skeptic label it "hours / week each".
+    - **Compliance.** "Three hours a day between us" was flagged as confidential, which would have hidden the quote; only secrecy phrasings count now. "The euro figure is the smaller part" was flagged as an unlabelled amount; only € or plural "euros" count now. Self-check asserts added for both.
+    - **`/p` page.** Order is now quote, card, the one question, then audio. Serif reading face. The transcript folds away and opens on play, so lines still highlight as spoken. The "(thin data)" heading over a deliberate single card and the hard-coded "about 75 seconds" are gone. The footer no longer lists source types the page doesn't use.
+    - `scripts/telegram-bot.ts` is a no-op that prints a message. README explains how to reset `data/hh.db`, either completely or keeping looked-up companies.
+  - Checked:
+    - Night path live (`claude-sonnet-5-5`) on two synthetic voice notes (fictional people) at Valmet and Ponsse. We reused the stored PRH rows, so there were no PRH calls. Seven rounds of prompt changes, 23-37 s per run.
+    - Skeptic min(stop, read, reply) per round, final run: **Ponsse 5/6/4 → 6/7/4 → 6/7/5. Valmet 5/6/4 → 6/7/4 → 6/7/4.** Read reached 7 once the guessed cards were gone. **Reply never passed 5, so the target of 7 is not met.** Re-scored with the original "would you reply to book 20 minutes?" wording, the final pages get reply 4 (Ponsse) and 5 (Valmet).
+    - Compliance re-run on stored model pages: the old Konecranes page that was blocked on "Luka Koper's RTG" now passes, so the possessive fix holds on real output. Both new pages pass.
+    - `/p`, `/capture` and `/hq` screenshotted at a real 1440 and 390 px viewport (DevTools device metrics, because the headless window can't go below 500 px), light and dark, with no horizontal overflow. typecheck, check, build, all self-checks, and the offline night path on a throwaway seeded DB pass.
+  - Threw away:
+    - Three other asks, each scored for reply: "book 20 minutes" (3-4), "reply with one anonymised sample" (4; "sending a dealer PDF to an unknown vendor feels risky"), and "a clickable mock-up" (4; "built from what your manager described is creepy"). The skeptic's notes on the ask contradicted each other from round to round, so we stopped chasing it and kept the teardown.
+    - The rule that the script cites 2 public sources. It produced "We checked this against the trade register and your website" and "Valmet is a global technology leader…" lines, which the skeptic called filler or surveillance every time. Public sources are now cited only where they add a fact.
+    - Changing the skeptic's persona or bar. We changed only what described the old product ("exactly 3 cards", "book 20 minutes") and the per-person hours label.
+  - Not checked: speech playback on a real phone. Stop is 5-6: a cold page labelled as AI is opened warily, and the house rules keep that label.
 
 ## Eval (before / after)
 
@@ -101,6 +120,8 @@ Append-only, timestamped (Europe/Helsinki). Each entry covers: what we **asked**
 | Brief claims dropped by sanitizer | n/a | 0 of 44 (the first 11 scout runs × 4 claims) | `sanitize_*` info steps in `agent_steps` |
 | Script lines dropped by sanitizer, per night run | 1-2 (the closing ask, every run) | 0 | same, on the Konecranes synthetic lead |
 | Skeptic-CEO min(stop, read, reply), round 0 → final | 3 → 3 | 4 → 4 (stop/read 6) | 3 night runs before the fixes, 1 after, same lead |
+| Skeptic-CEO stop / read / reply, final page (1-3 cards, one ask) | 6 / 6 / 4 (3 cards, Konecranes) | 6 / 7 / 4-5 (1 card; Valmet, Ponsse) | final live run on 2 synthetic leads, polish pass |
+| Euro figure double-counted (team hours as per-person) | 1 of 2 pages | 0 of 2 | same runs |
 
 ## Cut list
 

@@ -12,7 +12,7 @@ Two lanes build in parallel against the shared kernel. **Edit only files your la
                                        lead_extract (voice transcript ─► lead + hallway source)
                                           │ writes companies, sources, leads, briefs
                                           ▼
- /hq "run night path now" ───►  NIGHT  researcher ─► 3 opportunity cards (euro formula)
+ /hq "run night path now" ───►  NIGHT  researcher ─► 1-3 opportunity cards (euro formula)
  scripts/night.ts (cron) ────►         showrunner ─► ~75s A/B script ─► sanitizer
                                        skeptic_ceo (score <7 ─► rewrite, ≤2 rounds) ─► compliance
                                        ─► approval (PENDING) ─► /hq approve|edit|kill
@@ -102,15 +102,15 @@ scripts/night.ts               cron entry: every lead from the last 24h without 
    - Drop any item whose `source_ids` is empty or contains an id that is not in `knownSourceIds(companyId)`.
    - Script lines may omit sources only when they contain no digits, €, % or proper nouns other than the company name.
    - Log the dropped items as an `info` step.
-2. **Researcher** (`agent: "researcher"`, ≤8 tools: `search_sources` over the evidence store, plus LIVE's `fetchSite` / `tedSearch`) returns exactly 3 opportunities. Each has a `Claim`, an `EuroFormula` and `input_source_ids`. Inputs without a source get `label: "sector estimate"`.
+2. **Researcher** (`agent: "researcher"`, ≤8 tools: `search_sources` over the evidence store, plus LIVE's `fetchSite` / `tedSearch`) returns 1-3 opportunities, only those a cited source shows as a real manual task (a sharp hallway card beats guesses inferred from tenders). Each has a `Claim`, an `EuroFormula` and `input_source_ids`. Inputs without a source get `label: "sector estimate"`.
 3. **Formula.**
    - `eur_per_year = hours_per_week × people × weeks_per_year × hourly_cost_eur × automation_share`, computed in `formula.ts` and shown with every input.
    - Inputs are editable on the page and recompute client-side.
    - Every figure is labelled "estimate".
 4. **Script** (`agent: "showrunner"`).
-   - Two hosts A/B, introduced as "Velho's AI analysts". About 75 s, which is about 180-200 words.
+   - Two hosts A/B, introduced as "Velho's AI analysts". At most 75 s (120-190 words), shorter with one card. No arithmetic aloud. The last line is one question tied to card 1's evidence (a free one-page teardown of the named process, no data and no call needed).
    - The **first line quotes the hallway quote verbatim**, citing its hallway source id.
-   - At least 2 public sources are cited.
+   - Public sources are cited only where they add a fact; no line exists just to cite one (the Skeptic-CEO scored those lines as filler).
 5. **Skeptic-CEO gate** (`agent: "skeptic_ceo"`, schema `SkepticScore`).
    - If `min(stop, read, reply) < 7`, rewrite the script with the notes, for at most 2 rewrite rounds.
    - Store every round in `pages.skeptic`.
@@ -119,7 +119,7 @@ scripts/night.ts               cron entry: every lead from the last 24h without 
 7. **Page `/p/[slug]`.**
    - Slug from `uid("p")`, unguessable. `robots: noindex`, linked only from /hq.
    - Header "Made for <Company>, Velho draft"; byline "by Velho's AI analysts".
-   - 3 cards, each with a source chip that shows the excerpt and url on click.
+   - 1-3 cards, each with a source chip that shows the excerpt and url on click, then the ask (the script's closing question) on its own.
    - A player built on `speechSynthesis` with two distinct voices from `getVoices()`. If only one voice exists, fall back to the same voice at a different pitch. The transcript is visible and highlights the line being spoken.
 8. **/hq.**
    - Live runs with their steps, and pending approvals.
