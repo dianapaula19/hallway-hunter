@@ -32,6 +32,7 @@ export default function HQ() {
   const [err, setErr] = useState("")
   const [company, setCompany] = useState("")
   const [lead, setLead] = useState("")
+  const [recipient, setRecipient] = useState("COO") // who the page is framed for; "" = the role met
   const [busy, setBusy] = useState("")
   const [msg, setMsg] = useState("")
   const [job, setJob] = useState<{ pageId: string; slug: string; name?: string } | null>(null) // night path started, not yet finished
@@ -56,7 +57,7 @@ export default function HQ() {
     setBusy("night"); setMsg(`Starting the night path for ${name}…`)
     try {
       // 202 at once; the path itself runs 23-41 s server-side and the board poll below picks up the result.
-      const r = await fetch(withBase("/api/night"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ company_id: co, lead_id: lead || undefined }) })
+      const r = await fetch(withBase("/api/night"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ company_id: co, lead_id: lead || undefined, recipient: recipient || undefined }) })
       const j = await r.json()
       if (!r.ok) { setMsg(`Could not start: ${j.error}`); setBusy(""); return }
       setJob({ pageId: j.page_id, slug: j.slug, name })
@@ -123,6 +124,12 @@ export default function HQ() {
               <select className={s.field} value={lead} disabled={!!busy} aria-label="Lead" onChange={(e) => setLead(e.target.value)}>
                 <option value="">Latest lead (or none)</option>
                 {leads.map((l) => <option key={l.id} value={l.id}>{l.role} · {when(l.created_at)}</option>)}
+              </select>
+              <select className={s.field} value={recipient} disabled={!!busy} aria-label="Who the page is for" onChange={(e) => setRecipient(e.target.value)}>
+                <option value="COO">For the COO</option>
+                <option value="CEO">For the CEO</option>
+                <option value="CFO">For the CFO</option>
+                <option value="">For the person we met</option>
               </select>
               <button className={s.primary} onClick={runNight} disabled={!!busy || !b?.companies.length}>{busy === "night" ? "Running…" : "Run"}</button>
             </div>
@@ -240,9 +247,9 @@ function ApprovalCard({ a }: { a: Board["approvals"][number] }) {
         <dl className={s.dl}>
           <dt>Compliance</dt>
           <dd>{blocked ? <ul className={s.issues}>{a.compliance!.issues.map((x, i) => <li key={i}>{x}</li>)}</ul> : a.compliance ? "No promises, personal names or confidential details found." : "Not run."}</dd>
-          <dt>Reader test <span className={s.time}>(a model reads it as a busy CEO; scores out of 10, aim 7+)</span></dt>
+          <dt>Reader test <span className={s.time}>(a model reads it as the executive it is for; scores out of 10, aim 7+)</span></dt>
           <dd>{rounds.length ? (
-            <ol className={s.rounds}>{rounds.map((r, i) => <li key={i}>Round {i + 1}: would stop {r.stop} · would read {r.read} · would reply {r.reply}</li>)}</ol>
+            <ol className={s.rounds}>{rounds.map((r, i) => <li key={i}>Round {i + 1}: would stop {r.stop} · would read {r.read} · would reply {r.reply}{r.reply_why && <><br /><span className={s.time}>Why reply {r.reply}: {r.reply_why}</span></>}</li>)}</ol>
           ) : "Not run."}</dd>
           {last?.notes && <><dt>Reader notes</dt><dd>{last.notes}</dd></>}
         </dl>

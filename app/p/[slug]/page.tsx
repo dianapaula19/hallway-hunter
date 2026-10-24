@@ -2,8 +2,9 @@ import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { all, get, OWN_INBOX } from "@/lib/db.ts"
 import { isConfidential } from "@/lib/night/compliance.ts"
-import type { Company, Lead, Opportunity, Page, Source } from "@/lib/types.ts"
-import { Chips, FormulaRow, Player } from "./client.tsx"
+import type { Claim, Company, Lead, Opportunity, Page, Source } from "@/lib/types.ts"
+import { TERMS } from "@/lib/night/script.ts"
+import { Chips, Forward, FormulaRow, Player } from "./client.tsx"
 import { fiText, headline, withoutEcho } from "./letter.ts"
 import s from "./page.module.css"
 
@@ -46,13 +47,19 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
   // A script line citing a hidden (confidential) hallway source is not shown either.
   const script = page.script.filter((l) => showQuote || !l.source_ids.some((id) => sources.get(id)?.kind === "hallway"))
 
-  // Number citations in reading order: quote, cards, script, then the register line in the small print.
+  const letter = page.letter
+  const checked = [letter?.scale, letter?.checked].filter((c): c is Claim => !!c)
+  const questions = letter?.questions ?? []
+  // Number citations in reading order: quote, cards, what we checked, questions, script, then the register line.
   const order: string[] = []
-  for (const id of [hallway?.id, ...opps.flatMap((o) => o.claim.source_ids), ...opps.flatMap((o) => o.formula.input_source_ids), ...script.flatMap((l) => l.source_ids), prh?.id])
+  for (const id of [hallway?.id, ...opps.flatMap((o) => o.claim.source_ids), ...opps.flatMap((o) => o.formula.input_source_ids), ...checked.flatMap((c) => c.source_ids), ...questions.flatMap((c) => c.source_ids), ...script.flatMap((l) => l.source_ids), prh?.id])
     if (id && sources.has(id) && !order.includes(id)) order.push(id)
   const cited = order.map((id, i) => ({ n: i + 1, ...sources.get(id)! }))
   const num = Object.fromEntries(cited.map((c) => [c.id, c.n]))
   const synthetic = /\(synthetic\)/i.test(company.name)
+  const demoNote = !!lead?.synthetic || synthetic
+  const approved = page.status === "approved"
+  const reader = letter?.recipient ?? null
   const name = company.name.replace(/\s*\(synthetic\)\s*/i, "")
   const date = new Date(page.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Helsinki" })
   // The script's closing question is the page's one ask; show it on its own, not only inside the audio.
@@ -60,6 +67,11 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
   // Lead with the question itself; the terms after it are small print, not a second paragraph to wade through.
   const q = ask ? ask.text.indexOf("?") + 1 : 0
   const top = headline(opps[0])
+  // Two sentences the hallway contact can forward to the executive: the process with its estimate, then the one question.
+  const fwdFirst = opps[0] && top
+    ? `${fiText(opps[0].claim.text.split(/(?<=[.!?])\s/)[0])} ${top.eur ?? top.h1.at(-1)!.replace(/\.$/, "")} (${top.label}; the working is on the page).`
+    : questions[0] ? `What the public record shows: ${fiText(questions[0].text)}` : null
+  const fwdText = fwdFirst && ask ? `${fwdFirst} ${fiText(ask.text.slice(0, q))}` : null
   // We store no event name, only when the lead was captured.
   const met = lead ? `Met in a conference hallway, ${day(lead.created_at)}` : null
   // Reply yes opens the viewer's own mail app, addressed to our inbox. The app sends nothing (CLAUDE.md rule 1).
@@ -71,12 +83,12 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
         <Letterhead />
         {met && <p className={s.stub}>{met}</p>}
 
-        <p className={s.eyebrow}>Made for {name}</p>
+        <p className={s.eyebrow}>{reader ? `For the ${reader}, ${name}` : `Made for ${name}`}</p>
         {top ? (
           <>
-            <h1 className={s.h1}><span>{top.hours} hours a week by hand.</span> <span>About <span className={s.nowrap}>{top.eur} a year</span> to win back.</span></h1>
+            <h1 className={s.h1}>{top.h1.map((t) => <span key={t}>{t}</span>)}</h1>
             <p className={s.deck}>
-              <span className={s.tag}>{top.label}</span> for one fix: {opps[0].title.charAt(0).toLowerCase() + opps[0].title.slice(1)}. The working is below; change any number.
+              {top.eur && <>{top.eur}, </>}<span className={s.tag}>{top.label}</span> for one fix{top.h1.length === 1 && top.h1[0].startsWith(opps[0].title.slice(0, 12)) ? "" : `: ${opps[0].title.charAt(0).toLowerCase() + opps[0].title.slice(1)}`}. The working is below; change any number.
             </p>
           </>
         ) : <h1 className={s.h1}>A first look at {name}</h1>}
@@ -85,12 +97,21 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
           <figure className={s.quote}>
             <blockquote>“{lead.quote}”</blockquote>
             <figcaption>{lead.role}, {name} {hallway && <Chips ids={[hallway.id]} num={num} />}</figcaption>
+            {demoNote && <p className={s.demoNote}>Demo note, invented for this demo; nobody at {name} said this.</p>}
           </figure>
         )}
 
         <section className={s.section} aria-labelledby="start">
-          <h2 id="start" className={s.h2}>{opps.length > 1 ? `${opps.length} places to start` : opps.length ? "Where to start" : "Thin data"}</h2>
-          {opps.length === 0 && <p className={s.muted}>We did not find enough evidence to suggest anything specific yet.</p>}
+          <h2 id="start" className={s.h2}>{opps.length > 1 ? `${opps.length} places to start` : opps.length ? "Where to start" : questions.length ? "What we'd ask you" : "Thin data"}</h2>
+          {opps.length === 0 && !questions.length && <p className={s.muted}>We did not find enough evidence to suggest anything specific yet.</p>}
+          {opps.length === 0 && questions.length > 0 && (
+            <>
+              <p className={s.muted}>No one at {name} has told us about a manual task yet, so there is no estimate. These are the questions the public record raises.</p>
+              <ol className={s.questions}>
+                {questions.map((x, i) => <li key={i}>{fiText(x.text)} <Chips ids={x.source_ids} num={num} /></li>)}
+              </ol>
+            </>
+          )}
           <ol className={s.cards}>
             {opps.map((o, i) => (
               <li key={o.id} className={s.card}>
@@ -100,13 +121,20 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
               </li>
             ))}
           </ol>
+          {checked.length > 0 && (
+            <div className={s.checked}>
+              <h3 className={s.checkedH}>What we checked</h3>
+              {checked.map((c, i) => <p key={i}>{fiText(c.text)} <Chips ids={c.source_ids} num={num} /></p>)}
+              {letter?.scale && opps.length > 0 && <p className={s.muted}>The estimate above is for the team in the formula only. Set &ldquo;people&rdquo; to the number who do this task at {name}.</p>}
+            </div>
+          )}
         </section>
 
         {ask && (
           <section className={s.ask} aria-labelledby="ask">
             <h2 id="ask" className={s.h2}>One question</h2>
             <p className={s.askText}>{fiText(ask.text.slice(0, q))}</p>
-            {ask.text.slice(q).trim() && <p className={s.askTerms}>{fiText(ask.text.slice(q).trim())}</p>}
+            <p className={s.askTerms}>{fiText(ask.text.slice(q).trim()) || TERMS}</p>
             <p className={s.yesRow}>
               <a className={s.yes} href={yes}>Reply yes</a>
               <span className={s.yesNote}>Opens your own email app, addressed to Velho. Nothing is sent until you press send.</span>
@@ -114,9 +142,15 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
           </section>
         )}
 
+        {fwdText && lead && (
+          <Forward reader={reader ?? "COO"} text={fwdText} subject={`For the ${reader ?? "COO"}: ${opps[0]?.title ?? `a first look at ${name}`} (Velho draft)`} />
+        )}
+
         <div className={s.sign}>
           <span className={s.signRole}>Velho consultant</span>
-          <span className={s.muted}>Velho · drafted by Velho&apos;s AI analysts, checked by a person at Velho before you saw it.</span>
+          <span className={s.muted}>{approved
+            ? <>Velho · drafted by Velho&apos;s AI analysts, checked by a person at Velho before you saw it.</>
+            : <>Velho · drafted by Velho&apos;s AI analysts. Draft, not yet reviewed by a person at Velho.</>}</span>
         </div>
 
         {script.length > 0 && (

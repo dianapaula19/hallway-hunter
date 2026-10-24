@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { all, get } from "@/lib/db.ts"
 import { isConfidential } from "@/lib/night/compliance.ts"
-import type { Lead, Opportunity, PageStatus } from "@/lib/types.ts"
+import type { Lead, Opportunity, PageLetter, PageStatus } from "@/lib/types.ts"
 import { headline } from "./p/[slug]/letter.ts"
 import s from "./home.module.css"
 import { Wordmark } from "./wordmark"
@@ -16,11 +16,11 @@ const latest = () =>
      ORDER BY p.created_at DESC LIMIT 5`,
   )
 
-// The before/after artefact: the newest page that is approved or waiting for approval, drawn small in markup.
+// The before/after artefact: the newest approved or waiting page, preferring one with a hallway quote, drawn small in markup.
 function sample() {
-  const p = get<{ id: string; slug: string; name: string; lead_id: string | null }>(
-    `SELECT p.id, p.slug, c.name, p.lead_id FROM pages p JOIN companies c ON c.id = p.company_id
-     WHERE p.status IN ('approved', 'pending_approval') ORDER BY p.created_at DESC LIMIT 1`,
+  const p = get<{ id: string; slug: string; name: string; lead_id: string | null; letter: PageLetter | null }>(
+    `SELECT p.id, p.slug, c.name, p.lead_id, p.letter FROM pages p JOIN companies c ON c.id = p.company_id
+     WHERE p.status IN ('approved', 'pending_approval') ORDER BY p.lead_id IS NOT NULL DESC, p.created_at DESC LIMIT 1`,
   )
   if (!p) return null
   const lead = p.lead_id ? get<Lead>("SELECT * FROM leads WHERE id = ?", p.lead_id) ?? null : null
@@ -28,8 +28,10 @@ function sample() {
   return {
     slug: p.slug,
     name: clean(p.name),
+    recipient: p.letter?.recipient ?? null,
     role: lead?.role ?? null,
     quote: lead && !isConfidential(lead) ? lead.quote : null,
+    synthetic: !!lead?.synthetic || /\(synthetic\)/i.test(p.name),
     head: headline(top),
   }
 }
@@ -83,11 +85,12 @@ export default function Home() {
             <div className={s.side}>
               <Link href={`/p/${ex.slug}`} className={s.mini} aria-label={`Open the page made for ${ex.name}`}>
                 <span className={s.miniHead}><span className={`wordmark-name ${s.miniMark}`}>Velho</span><span>Velho draft · by Velho&apos;s AI analysts</span></span>
-                <span className={s.miniEyebrow}>Made for {ex.name}</span>
+                <span className={s.miniEyebrow}>{ex.recipient ? `For the ${ex.recipient}, ${ex.name}` : `Made for ${ex.name}`}</span>
                 <span className={s.miniH1}>
-                  {ex.head ? <><span>{ex.head.hours} hours a week by hand.</span> <span>About <span className={s.nowrap}>{ex.head.eur} a year</span> to win back.</span></> : <>A first look at {ex.name}</>}
+                  {ex.head ? ex.head.h1.map((t) => <span key={t}>{t}</span>) : <>A first look at {ex.name}</>}
                 </span>
                 {ex.quote && <span className={s.miniQuote}>“{ex.quote}”</span>}
+                {ex.quote && ex.synthetic && <span className={s.miniDemo}>Demo note, invented for this demo; nobody at {ex.name} said this.</span>}
                 <span className={s.miniCalc} aria-hidden><i /><i /><i /><i /><i /></span>
                 <span className={s.miniYes}>Reply yes</span>
               </Link>
