@@ -1,7 +1,8 @@
 "use client"
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react"
 import posthog from "posthog-js"
-import { clampInput, eurPerYear, fmtEur, FORMULA_INPUTS, type FormulaKey } from "@/lib/night/formula.ts"
+import { clampInput, eurPerYear, FORMULA_INPUTS, type FormulaKey } from "@/lib/night/formula.ts"
+import { fi, fiEur, fiText, parseFi } from "./letter.ts"
 import type { EuroFormula, ScriptLine } from "@/lib/types.ts"
 import s from "./page.module.css"
 
@@ -18,42 +19,40 @@ export function Chips({ ids, num }: { ids: string[]; num: Record<string, number>
   )
 }
 
-// Editable estimate: every input visible, recomputed in the browser.
+// Editable estimate: every input visible, recomputed in the browser. Text inputs, not type=number, so the
+// numbers read the same Finnish way (7,5) whatever the viewer's browser locale is.
 export function FormulaRow({ formula, chips }: { formula: EuroFormula; chips: ReactNode }) {
   const [f, setF] = useState(formula)
-  // Inputs are uncontrolled so a half-typed "2." or "-" stays as typed; only a valid number updates the estimate.
-  const shown = (k: FormulaKey, v: number) => String(k === "automation_share" ? Math.round(v * 100) : v)
+  // Inputs are uncontrolled so a half-typed "7," stays as typed; only a valid number updates the estimate.
+  const shown = (k: FormulaKey, v: number) => fi(k === "automation_share" ? Math.round(v * 100) : v)
   const set = (k: FormulaKey, raw: string) => {
-    const n = raw.trim() === "" ? NaN : Number(raw) / (k === "automation_share" ? 100 : 1)
+    const n = parseFi(raw) / (k === "automation_share" ? 100 : 1)
     if (Number.isFinite(n)) setF((p) => ({ ...p, [k]: clampInput(k, n) }))
   }
   return (
     <div className={s.formula}>
-      <p className={s.eur}>
-        ≈ {fmtEur(eurPerYear(f))} <span className={s.per}>/ year</span>
-        <span className={s.tag}>{f.label}</span>
-      </p>
-      <div className={s.inputs} role="group" aria-label="Estimate formula, editable">
-        {FORMULA_INPUTS.map((inp, i) => {
-          const pct = inp.key === "automation_share"
-          return (
-            <span key={inp.key} className={s.term}>
-              {i > 0 && <span className={s.op} aria-hidden>×</span>}
-              <label>
-                <input
-                  type="number" inputMode="decimal" min={0} max={pct ? 100 : inp.max} step={pct ? 5 : inp.step}
-                  defaultValue={shown(inp.key, f[inp.key])}
-                  onChange={(e) => set(inp.key, e.target.value)}
-                  onBlur={(e) => { e.currentTarget.value = shown(inp.key, f[inp.key]) }}
-                />
-                <span>{pct ? "% automatable" : inp.label}</span>
-              </label>
-            </span>
-          )
-        })}
+      <div className={s.calc} role="group" aria-label="Estimate formula, editable">
+        {FORMULA_INPUTS.map((inp, i) => (
+          <Fragment key={inp.key}>
+            <label className={s.term}>
+              <input
+                type="text" inputMode="decimal" autoComplete="off" spellCheck={false}
+                defaultValue={shown(inp.key, f[inp.key])}
+                onChange={(e) => set(inp.key, e.target.value)}
+                onBlur={(e) => { e.currentTarget.value = shown(inp.key, f[inp.key]) }}
+              />
+              <span>{inp.key === "automation_share" ? "% automatable" : inp.label}</span>
+            </label>
+            {i < FORMULA_INPUTS.length - 1 && <span className={s.op} aria-hidden>×</span>}
+          </Fragment>
+        ))}
+        <p className={s.result} aria-live="polite">
+          <span className={s.eq} aria-hidden>=</span> {fiEur(eurPerYear(f))} <span className={s.per}>a year</span>
+          <span className={s.tag}>{f.label}</span>
+        </p>
       </div>
       <p className={s.formulaNote}>
-        {f.label === "sector estimate" ? "Sector estimate: no input comes from a company source. Adjust to your numbers." : <>Inputs partly from {chips}. Adjust to your numbers.</>}
+        {f.label === "sector estimate" ? "Sector estimate: no input comes from a company source. Change any number to yours." : <>Inputs partly from {chips}. Change any number to yours.</>}
       </p>
     </div>
   )
@@ -156,7 +155,7 @@ export function Player({ lines, num }: { lines: ScriptLine[]; num: Record<string
         {lines.map((l, i) => (
           <li key={i} className={i === cur ? s.now : undefined} aria-current={i === cur ? "true" : undefined}>
             <button className={s.host} onClick={() => supported && start(i)} title="Play from here">{l.host === "A" ? "Analyst A" : "Analyst B"}</button>
-            <span>{l.text} <Chips ids={l.source_ids} num={num} /></span>
+            <span>{fiText(l.text)} <Chips ids={l.source_ids} num={num} /></span>
           </li>
         ))}
       </ol>
