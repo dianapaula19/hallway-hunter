@@ -1,0 +1,16 @@
+[
+  {
+    "name": "velho-night-2200",
+    "tz": "Europe/Helsinki",
+    "message": "Velho night path starts on the box now. New leads become 'Velho draft' pages that wait for your approval in /hq. Nothing is sent to any company.",
+    "schedule": { "type": "cron", "cron": "0 22 * * *" },
+    "target": { "channel": "telegram", "chatId": "${TELEGRAM_CHAT_ID}" }
+  },
+  {
+    "name": "velho-digest-0730",
+    "tz": "Europe/Helsinki",
+    "message": "Velho 07:30: the overnight digest follows from the box loop. If it does not arrive, the loop is down: open /hq.",
+    "schedule": { "type": "cron", "cron": "30 7 * * *" },
+    "target": { "channel": "telegram", "chatId": "${TELEGRAM_CHAT_ID}" }
+  }
+]

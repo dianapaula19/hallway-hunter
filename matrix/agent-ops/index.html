@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Ops</title>
+<style>
+  :root { --bg: #f6f5f1; --card: #fff; --fg: #1f2328; --muted: #6b6f76; --line: #e3e1da; --wait: #b25d00; --bad: #b42318; --ok: #1a7f37; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #16181b; --card: #1f2226; --fg: #e8e6e1; --muted: #9a9ea5; --line: #30343a; --wait: #f0a443; --bad: #ff7b72; --ok: #56d364; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 15px/1.45 system-ui, sans-serif; }
+  header { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; margin-bottom: 16px; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 15px; margin: 0 0 8px; color: var(--muted); font-weight: 600; }
+  .muted { color: var(--muted); font-size: 13px; }
+  select { font: inherit; padding: 2px 6px; background: var(--card); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { padding: 8px 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: 4.5em 1fr auto; gap: 8px; }
+  li:first-child { border-top: 0; }
+  .tag { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .st { font-size: 13px; white-space: nowrap; }
+  .st.wait { color: var(--wait); } .st.bad { color: var(--bad); } .st.ok { color: var(--ok); }
+  .err { color: var(--bad); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Agent Ops</h1>
+  <label class="muted">Show <select id="product"><option value="">both</option><option value="bahn">Bahn (Ring)</option><option value="velho">Velho</option></select></label>
+  <span class="muted" id="seen">Loading…</span>
+</header>
+<section><h2>Waiting for a person</h2><ul id="waiting"><li class="muted">Loading…</li></ul></section>
+<section><h2>Recent agent runs</h2><ul id="runs"><li class="muted">Loading…</li></ul></section>
+<p class="muted">Read only. Approve or reject in Ring or in Velho /hq. Ring times use its simulated clock, which starts at the dataset snapshot.</p>
+<script>
+  const db = window.MatrixOS && window.MatrixOS.db
+  const $ = (id) => document.getElementById(id)
+  const WAITING = new Set(["PENDING", "PENDING_REVIEW", "APPROVED_AWAITING_EXECUTION"])
+  const name = { bahn: "Ring", velho: "Velho" }
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c])
+  const when = (iso, clock) => iso ? new Date(iso).toLocaleString([], { dateStyle: "short", timeStyle: "short" }) + (clock === "sim" ? " (sim)" : "") : ""
+  const cls = (s) => /error|fail|reject|stopped/i.test(s) ? "bad" : /running|pending|awaiting/i.test(s) ? "wait" : "ok"
+  const item = (r, main, sub) => `<li><span class="tag">${name[r.product] ?? esc(r.product)}</span><span>${main}<br><span class="muted">${sub}</span></span><span class="st ${cls(r.status)}">${esc(r.status)}</span></li>`
+  const list = (el, rows, render, empty) => { $(el).innerHTML = rows.length ? rows.map(render).join("") : `<li class="muted">${empty}</li>` }
+
+  async function load() {
+    const p = $("product").value
+    const where = p ? { product: p } : undefined
+    try {
+      const [approvals, runs] = await Promise.all([
+        db.find("approvals", { where, orderBy: { created_at: "desc" }, limit: 200 }),
+        db.find("runs", { where, orderBy: { started_at: "desc" }, limit: 30 }),
+      ])
+      list("waiting", approvals.filter((a) => WAITING.has(a.status)),
+        (a) => item(a, esc(a.summary), `${esc(a.kind)} · ${esc(a.subject)} · ${when(a.created_at, a.clock)}${a.trust_mode ? " · trust: " + esc(a.trust_mode) : ""}`),
+        "Nothing is waiting for a person.")
+      list("runs", runs,
+        (r) => item(r, `${esc(r.agent)}${r.subject ? " · " + esc(r.subject) : ""}`, `${when(r.started_at, r.clock)}${r.error ? ` · <span class="err">${esc(r.error)}</span>` : ""}`),
+        "No agent runs yet. The feeder on the box copies them here.")
+      $("seen").textContent = "Updated " + new Date().toLocaleTimeString([], { timeStyle: "short" })
+    } catch (e) {
+      $("seen").innerHTML = `<span class="err">Could not read the tables. Retrying.</span>`
+    }
+  }
+
+  if (!db) {
+    $("seen").textContent = "Open this inside Matrix OS: the app data bridge is not available here."
+    $("waiting").innerHTML = $("runs").innerHTML = '<li class="muted">Unavailable outside Matrix OS.</li>'
+  } else {
+    load()
+    db.onChange("runs", load)
+    db.onChange("approvals", load)
+    $("product").addEventListener("change", load)
+    setInterval(load, 30000) // backstop in case a change event is missed
+  }
+</script>
+</body>
+</html>

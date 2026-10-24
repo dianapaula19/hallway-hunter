@@ -1,0 +1,44 @@
+{
+  "name": "Agent Ops",
+  "slug": "agent-ops",
+  "description": "One live board for the Ring (Bahn) and Velho agents: recent runs and everything waiting for a person. Read only.",
+  "category": "productivity",
+  "author": "hackathon-04",
+  "version": "0.1.0",
+  "runtime": "static",
+  "runtimeVersion": "^1.0.0",
+  "scope": "personal",
+  "storage": {
+    "tables": {
+      "runs": {
+        "columns": {
+          "src_key": "text",
+          "product": "text",
+          "agent": "text",
+          "subject": "text",
+          "status": "text",
+          "error": "text",
+          "clock": "text",
+          "started_at": "text",
+          "ended_at": "text"
+        },
+        "indexes": ["src_key", "product", "started_at"]
+      },
+      "approvals": {
+        "columns": {
+          "src_key": "text",
+          "product": "text",
+          "kind": "text",
+          "subject": "text",
+          "summary": "text",
+          "status": "text",
+          "trust_mode": "text",
+          "clock": "text",
+          "created_at": "text",
+          "decided_at": "text"
+        },
+        "indexes": ["src_key", "product", "status"]
+      }
+    }
+  }
+}

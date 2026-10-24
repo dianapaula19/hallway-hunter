@@ -1,0 +1,28 @@
+{
+  "name": "Hallway Hunter",
+  "slug": "hallway-hunter",
+  "description": "Velho: hallway photo or name to a cited brief, overnight 'Velho draft' pages that wait for human approval. Synthetic demo data.",
+  "category": "productivity",
+  "author": "hackathon-04",
+  "version": "0.1.0",
+  "runtime": "node",
+  "runtimeVersion": "^1.0.0",
+  "scope": "personal",
+  "build": {
+    "install": "true",
+    "command": "true",
+    "output": ".",
+    "timeout": 60
+  },
+  "serve": {
+    "start": "cd ../../projects/hallway-hunter && exec node --env-file-if-exists=../.env node_modules/next/dist/bin/next start -p $PORT",
+    "healthCheck": "/api/health",
+    "startTimeout": 30,
+    "idleShutdown": 900
+  },
+  "resources": {
+    "memoryMb": 768,
+    "cpuShares": 512,
+    "maxFileHandles": 256
+  }
+}
