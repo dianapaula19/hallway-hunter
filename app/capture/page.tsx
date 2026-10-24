@@ -1,5 +1,6 @@
 "use client"
 import { useEffect, useRef, useState } from "react"
+import posthog from "posthog-js"
 import type { Brief, Claim, Company, Lead, Source } from "@/lib/types"
 import s from "./capture.module.css"
 
@@ -54,11 +55,17 @@ export default function CapturePage() {
 
   function reset() { setError(null); setCap(null); setScout(null); setTotal(null); setOpen(null); setTranscript("") }
 
-  async function runScout(business_id: string, start = Date.now()) {
+  async function runScout(business_id: string, start = Date.now(), trigger: "auto_match" | "candidate_selected" = "candidate_selected") {
     setBusy("Researching (PRH, TED, website)…")
     try {
       const r = await post<ScoutRes>("/api/scout", JSON.stringify({ business_id }))
       if (r.error) setError(r.error)
+      else if (process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) {
+        posthog.capture("company_scout_completed", {
+          result: r.ceased ? "ceased" : "brief_ready",
+          trigger,
+        })
+      }
       setScout(r); setTotal(Date.now() - start)
     } catch (e) { setError(String(e)) } finally { setBusy(null) }
   }
@@ -70,8 +77,16 @@ export default function CapturePage() {
     try {
       const r = await post<CaptureRes>("/api/capture", body, typeof body === "string")
       if (r.error) { setError(r.error); setBusy(null); return }
+      if (process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) {
+        posthog.capture("company_lookup_completed", {
+          input_method: typeof body === "string" ? "typed_query" : "card_photo",
+          candidate_count: r.candidates.length,
+          suggestion_count: r.suggestions.length,
+          auto_match_found: Boolean(r.auto),
+        })
+      }
       setCap(r)
-      if (r.auto) return await runScout(r.auto, start)
+      if (r.auto) return await runScout(r.auto, start, "auto_match")
       setBusy(null)
     } catch (e) { setError(String(e)); setBusy(null) }
   }
@@ -103,13 +118,17 @@ export default function CapturePage() {
     setBusy("Saving lead (names scrubbed)…")
     try {
       const r = await post<{ lead?: Lead; error?: string }>("/api/lead", JSON.stringify({ company_id: company.id, transcript }))
-      if (r.error) setError(r.error); else { setTranscript(""); await loadLeads(company.id) }
+      if (r.error) setError(r.error); else {
+        if (process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) posthog.capture("lead_saved")
+        setTranscript(""); await loadLeads(company.id)
+      }
     } finally { setBusy(null) }
   }
 
   async function del(id: string) {
     if (!confirm("Delete this lead and its hallway quote?")) return
-    await fetch(`/api/lead/${encodeURIComponent(id)}`, { method: "DELETE" })
+    const r = await fetch(`/api/lead/${encodeURIComponent(id)}`, { method: "DELETE" })
+    if (r.ok && process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) posthog.capture("lead_deleted")
     if (company) await loadLeads(company.id)
   }
 

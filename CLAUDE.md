@@ -22,3 +22,7 @@ Velho hackathon entry. A photo, company name or voice note becomes a cited 120-w
 - Imports inside `lib/` and `scripts/` are relative and include the `.ts` extension (`../lib/db.ts`), so `node scripts/x.ts` runs without a build step. Use erasable TS only: no enums, no namespaces, no parameter properties. App files may use `@/lib/...`.
 - Stdlib and native first: `fetch`, `node:sqlite`, browser `speechSynthesis` / `SpeechRecognition`, `<input type="file" capture>`. No new dependency without asking the tech lead.
 - Before you hand back a lane: `npm run typecheck && npm run check && npm run build`.
+
+## PostHog
+
+Product analytics and LLM analytics go to PostHog only when `NEXT_PUBLIC_POSTHOG_KEY`/`HOST` are set; without them the app runs and sends nothing. LLM analytics run with `privacyMode: true`: prompts, hallway notes and briefs never leave the app. Test traffic opens pages with `?synthetic=1` and is tagged `synthetic_tester`.

@@ -1,6 +1,9 @@
 // Shared Claude tool-loop runner. Owned by tech lead.
 // Every model turn and every tool call is logged to agent_runs / agent_steps (the /hq board reads them).
 import Anthropic from "@anthropic-ai/sdk"
+import { Anthropic as PostHogAnthropic } from "@posthog/ai/anthropic"
+import { randomUUID } from "node:crypto"
+import { PostHog } from "posthog-node"
 import type {
   BetaContentBlockParam,
   BetaMessageParam,
@@ -25,10 +28,33 @@ export function hasKey(): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY)
 }
 
+function loadPostHogEnv() {
+  if (process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) return
+  try { process.loadEnvFile(".env.local") } catch { /* missing is fine */ }
+  try { process.loadEnvFile(".env") } catch { /* missing is fine */ }
+}
+
+loadPostHogEnv()
+const posthogKey = process.env.NEXT_PUBLIC_POSTHOG_KEY
+const posthogHost = process.env.NEXT_PUBLIC_POSTHOG_HOST
+const posthog = posthogKey && posthogHost
+  ? new PostHog(posthogKey, {
+      host: posthogHost,
+      privacyMode: true, // hallway notes and briefs never leave the app; PostHog gets timing, tokens and errors only
+      enableExceptionAutocapture: true,
+      flushAt: 1,
+      flushInterval: 0,
+    })
+  : undefined
+
 let _client: Anthropic | undefined
 function client(): Anthropic {
   if (!hasKey()) throw new Error("ANTHROPIC_API_KEY is not set (expected in hackathon-04/.env)")
-  return (_client ??= new Anthropic())
+  if (!posthog) {
+    // PostHog is optional: without its env vars the app runs and sends nothing.
+    return (_client ??= new Anthropic())
+  }
+  return (_client ??= new PostHogAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY!, posthog }) as unknown as Anthropic)
 }
 
 export interface Tool<I = Record<string, unknown>> {
@@ -75,6 +101,8 @@ export async function runAgent<T = unknown>(o: AgentOptions): Promise<AgentResul
   const tools = o.tools ?? []
   const maxToolCalls = o.maxToolCalls ?? 5
   const runId = startRun(o.agent, o.subjectId ?? null, MODEL)
+  const traceId = randomUUID()
+  const sessionId = `agent-run-${runId}`
   logStep(runId, "info", "prompt", { system: o.system, prompt: loggable(o.prompt) }, null)
 
   const messages: BetaMessageParam[] = [{ role: "user", content: o.prompt }]
@@ -84,7 +112,7 @@ export async function runAgent<T = unknown>(o: AgentOptions): Promise<AgentResul
     for (let turn = 0; turn < maxToolCalls + 3; turn++) {
       const budgetLeft = toolCalls < maxToolCalls
       const t0 = Date.now()
-      const res = await client().beta.messages.create({
+      const request = {
         model: MODEL,
         max_tokens: o.maxTokens ?? 8000,
         system: o.system,
@@ -100,8 +128,12 @@ export async function runAgent<T = unknown>(o: AgentOptions): Promise<AgentResul
             }
           : {}),
         betas: ["server-side-fallback-2026-07-01"],
-        fallbacks: "default",
-      }, o.timeoutMs ? { timeout: o.timeoutMs, maxRetries: 1 } : undefined)
+        fallbacks: "default" as const,
+        posthogTraceId: traceId,
+        posthogProperties: { $ai_session_id: sessionId },
+      }
+      const res = await client().beta.messages.create(request, o.timeoutMs ? { timeout: o.timeoutMs, maxRetries: 1 } : undefined)
+      await posthog?.flush()
       const text = res.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("")
       const uses = res.content.filter((b): b is BetaToolUseBlock => b.type === "tool_use")
       logStep(runId, "model", "turn", { turn }, { stop_reason: res.stop_reason, text, tool_uses: uses.map((u) => ({ name: u.name, input: u.input })), usage: res.usage, model: res.model }, Date.now() - t0)
@@ -132,15 +164,42 @@ export async function runAgent<T = unknown>(o: AgentOptions): Promise<AgentResul
           try {
             const out = await tool.run(u.input as Record<string, unknown>)
             const content = typeof out === "string" ? out : JSON.stringify(out)
+            posthog?.capture({
+              event: "$ai_span",
+              properties: {
+                $ai_trace_id: traceId,
+                $ai_session_id: sessionId,
+                $ai_span_id: randomUUID(),
+                $ai_span_name: u.name,
+                $ai_input_state: u.input,
+                $ai_output_state: out,
+                $ai_latency: (Date.now() - t1) / 1000,
+              },
+            })
             logStep(runId, "tool", u.name, u.input, out, Date.now() - t1)
             return { type: "tool_result", tool_use_id: u.id, content }
           } catch (e) {
             const msg = e instanceof Error ? e.message : String(e)
+            posthog?.capture({
+              event: "$ai_span",
+              properties: {
+                $ai_trace_id: traceId,
+                $ai_session_id: sessionId,
+                $ai_span_id: randomUUID(),
+                $ai_span_name: u.name,
+                $ai_input_state: u.input,
+                $ai_output_state: msg,
+                $ai_latency: (Date.now() - t1) / 1000,
+                $ai_is_error: true,
+                $ai_error: msg,
+              },
+            })
             logStep(runId, "error", u.name, u.input, msg, Date.now() - t1)
             return { type: "tool_result", tool_use_id: u.id, content: `error: ${msg}`, is_error: true }
           }
         }),
       )
+      await posthog?.flush()
       messages.push({ role: "user", content: results })
     }
     throw new Error("turn limit reached without a final answer")
@@ -148,6 +207,7 @@ export async function runAgent<T = unknown>(o: AgentOptions): Promise<AgentResul
     const msg = e instanceof Anthropic.APIError ? `API ${e.status}: ${e.message}` : e instanceof Error ? e.message : String(e)
     logStep(runId, "error", "run", null, msg)
     endRun(runId, "error", null, msg)
+    await posthog?.flush()
     throw e
   }
 }

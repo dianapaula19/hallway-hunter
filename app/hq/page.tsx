@@ -1,5 +1,6 @@
 "use client"
 import { useEffect, useState } from "react"
+import posthog from "posthog-js"
 import type { AgentRun, Approval, OutboxDraft, SkepticScore } from "@/lib/types.ts"
 import s from "./hq.module.css"
 
@@ -44,6 +45,9 @@ export default function HQ() {
     setBusy("night"); setMsg("Night path running… watch the runs below.")
     const r = await fetch("/api/night", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ company_id: co, lead_id: lead || undefined }) })
     const j = await r.json()
+    if (r.ok && process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) {
+      posthog.capture("night_path_completed", { has_selected_lead: Boolean(lead) })
+    }
     setBusy(""); setMsg(r.ok ? `Done: /p/${j.slug} is waiting for approval.` : `Failed: ${j.error}`)
   }
 
@@ -154,6 +158,9 @@ function ApprovalCard({ a }: { a: Board["approvals"][number] }) {
       body: JSON.stringify({ action, note, final_payload: action === "edit" ? { subject, body } : undefined }),
     })
     const j = await r.json()
+    if (r.ok && process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) {
+      posthog.capture("approval_decided", { action })
+    }
     setOut(r.ok ? j.status : j.error)
   }
 

@@ -1,5 +1,6 @@
 "use client"
 import { useEffect, useRef, useState, type ReactNode } from "react"
+import posthog from "posthog-js"
 import { eurPerYear, fmtEur, FORMULA_INPUTS, type FormulaKey } from "@/lib/night/formula.ts"
 import type { EuroFormula, ScriptLine } from "@/lib/types.ts"
 import s from "./page.module.css"
@@ -100,6 +101,9 @@ export function Player({ lines, num }: { lines: ScriptLine[]; num: Record<string
   const start = (from: number) => {
     const synth = window.speechSynthesis
     const g = ++gen.current
+    if (process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) {
+      posthog.capture("briefing_started", { start_position: from + 1 })
+    }
     synth.cancel()
     setState("playing")
     setShowText(true)
