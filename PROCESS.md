@@ -124,6 +124,31 @@ Append-only, timestamped (Europe/Helsinki). Each entry covers: what we **asked**
   - Found: `next start` re-reads `next.config.ts`, so the variable has to be set at start too. Matrix's gateway on `main` strips `/apps/<slug>` before proxying and health-checks the bare port. Its own Next template sets `basePath`, which contradicts that. So `deploy.sh` and `matrix.json` stay unprefixed until a box shows which one is right (see matrix/README).
   - Thrown away: `assetPrefix` plus relative URLs (A3 in MATRIX.md). It would fit the stripping gateway, but `<Link>` navigation would leave the app. Also a `basePath: false` rewrite to serve both, which Next allows only for external rewrites.
   - Slip: the first two probe runs had no `?synthetic=1` while PostHog keys were set, so a handful of untagged pageviews from localhost may be in PostHog.
+- **Clumsy-user run (6 agent personas, 3 on Velho).** It found 21 issues across Bahn and Velho. The blocker (every model call 400 on the PostHog fields) was fixed in the commit before this one.
+  - Fixed for Velho:
+    - `/hq`, `/capture`, `/` and every `/api` route except `/api/health` can now sit behind optional basic auth (`HQ_PASSWORD`, through a Next 16 `proxy.ts`). It is off by default. `/p` pages stay open. `/hq` no longer scrolls sideways on a phone: a raw error string in the runs list didn't wrap.
+    - Formula inputs on `/p` keep what you type. Only a valid number updates the estimate, and the result is clamped to the same caps the server uses (one `clampInput` in `lib/night/formula.ts`). Inputs no longer show "05" or "040", and partial input no longer gives €0.
+    - Edit, then Cancel, now discards the edit. The night-path selectors are locked during a run.
+    - The synthetic tag is kept in localStorage for 12 h, so `/p` tabs opened from `/hq` are tagged too.
+    - The `/p` header no longer says "awaiting human review". The "[below bar]" label is out of the draft subject: `/hq` shows it as an internal badge computed from the stored skeptic rounds. The 6 pending subjects in the local DB were cleaned once.
+    - A failed upload keeps the current brief and says "No connection to the server" in plain words. A blank Go gets a hint. Leaving `/capture` aborts the request in flight.
+    - Mic errors and lead-save errors appear in plain words in the voice card and clear after a save. The card heading names the company.
+    - If lead extraction fails, nothing is saved: the user is told and keeps the text to retry. (Running with no key still saves the regex-scrubbed note on purpose.)
+    - The player falls back to the transcript when the speech engine has no voices or errors. Headless Chrome reports 19 voices and still fails, and now it shows "Audio is not available".
+    - Unknown URLs get a friendly 404. A killed `/p` page now says "This draft has been withdrawn". There is an `app/icon.svg` favicon.
+    - The PRH chip links to the human YTJ page (`tietopalvelu.ytj.fi/yritys/<Y-tunnus>`) instead of the JSON API, and the 11 stored PRH rows were rewritten.
+  - Checked: typecheck, check (with new `clampInput` asserts), build, and the live, sanitize and compliance self-checks.
+    - Headless Chrome at 1440 and 390 px: no overflow on `/hq`, `/p`, `/capture`, the withdrawn page or the 404. Typing "2.5" gives 2.5, "-40" blurs to 0, "99999999999" people blurs to 10000, and "12e" keeps the last value.
+    - Edit, type, Cancel, Edit shows the original subject.
+    - `/capture` with a mocked network: a failed second lookup keeps the brief, and a failed lead save keeps the text.
+    - `next start` on a spare port with `HQ_PASSWORD` set: 401 without the password or with a wrong one, 200 with the right one. `/p`, its JS, `/api/health` and the icon return 200 with no auth.
+  - Left:
+    - "Back then Forward loses capture state": it needs state in the URL or storage, and that is too much for a demo page.
+    - "Did you mean" for "Wartsila" lists Valo Corp Oy. That is a ranking heuristic, and changing it needs live PRH runs.
+    - Citation chips are 18 px on phones. That is a design pass.
+    - `/P/<slug>` (capital P) is a 404, now the friendly one, rather than a redirect.
+    - The server keeps running a scout after the client aborts, because `runAgent` takes no signal. That is a shared-kernel change.
+    - Bahn items, which are another lane.
 
 ## Eval (before / after)
 
