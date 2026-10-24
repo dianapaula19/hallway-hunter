@@ -32,8 +32,10 @@ const CLAIM = {
   properties: { text: { type: "string" }, source_ids: { type: "array", items: { type: "string" } } },
 }
 const SCHEMA = {
-  type: "object", additionalProperties: false, required: ["opportunities"],
+  type: "object", additionalProperties: false, required: ["opportunities", "checked", "questions"],
   properties: {
+    checked: CLAIM,
+    questions: { type: "array", items: CLAIM },
     opportunities: {
       type: "array",
       items: {
@@ -75,9 +77,20 @@ Rules:
   people is the team that does the task. If no source gives it, use a small pilot team (2-5) and say "a pilot team of N" in the claim.
   Be conservative: Finnish loaded labour cost is typically 35-60 €/h, weeks_per_year about 46, automation_share rarely above 0.6.
 - No promises ("guarantee", "will save", "we will"). No personal names. Titles max 7 words, claims max 40 words, plain CEO English.
-- Tools: search_sources reads the evidence store; ted_search and fetch_site add new public evidence (read-only). Use them sparingly.`
+- Tools: search_sources reads the evidence store; ted_search and fetch_site add new public evidence (read-only). Use them sparingly.
+Also return:
+- checked: ONE sentence (max 30 words) for a "What we checked" line that ties a PUBLIC source (TED notice or the company's own site,
+  never the hallway note or the trade register) to the same process as card 1, e.g. "Ponsse Czech holds a harvester service and
+  repair framework with Lesy ČR (TED 518942-2026), so dealer parts orders also come from abroad." Cite it. If no public source
+  mentions that process, write only "We found nothing public about <the process>; we checked <N> TED notices and <their site>."
+  citing the public sources you checked, and do NOT describe what those unrelated sources are about (a reader takes that as padding).
+  No company blurb ("X is a global leader..."). If there are no public sources at all, give empty source_ids.
+- questions: only when there is NO hallway lead: 2 or 3 short questions we would ask their COO, each tied to one public source
+  that shows a recurring process (a framework, many call-offs, many sites or stores), citing it, e.g. "You supply 14 municipalities
+  under one food framework (TED ...): how do their call-off orders reach your order system today?". No questions about
+  what a source does not show. With a hallway lead, return an empty list.`
 
-export async function research(ctx: NightContext, pageId: string): Promise<{ runId: string; opportunities: DraftOpportunity[]; dropped: number }> {
+export async function research(ctx: NightContext, pageId: string): Promise<{ runId: string; opportunities: DraftOpportunity[]; checked: Claim | null; questions: Claim[]; dropped: number }> {
   const { company } = ctx
   const tools: Tool<any>[] = [
     {
@@ -109,7 +122,7 @@ export async function research(ctx: NightContext, pageId: string): Promise<{ run
   ]
 
   const lead = ctx.lead ? `Hallway lead (role: ${ctx.lead.role}): pain "${ctx.lead.pain}", quote "${ctx.lead.quote}".` : "No hallway lead."
-  const r = await runAgent<{ opportunities: { title: string; claim: Claim; formula: Partial<EuroFormula> }[] }>({
+  const r = await runAgent<{ opportunities: { title: string; claim: Claim; formula: Partial<EuroFormula> }[]; checked?: Claim; questions?: Claim[] }>({
     agent: "researcher", subjectId: pageId, system: SYSTEM, tools, maxToolCalls: 8, effort: "medium", schema: SCHEMA,
     prompt: `Company: ${company.name}${company.business_id ? ` (Y-tunnus ${company.business_id})` : ""}\n${lead}\n\nEvidence store:\n${sourceList(ctx.sources) || "(empty)"}\n\nReturn 1-3 opportunities, only those a cited source directly supports.`,
   })
@@ -121,5 +134,14 @@ export async function research(ctx: NightContext, pageId: string): Promise<{ run
     .filter((o) => kept.includes(o.claim))
     .slice(0, 3)
     .map((o) => ({ title: String(o.title).slice(0, 80), claim: o.claim, formula: normalizeFormula(o.formula, known) }))
-  return { runId: r.runId, opportunities, dropped: raw.length - kept.length }
+  // "What we checked" must lean on a public source (TED or site); with none in the store, an uncited "found nothing" line is allowed.
+  const pub = new Set(all<{ id: string }>("SELECT id FROM sources WHERE company_id = ? AND kind IN ('ted', 'site')", company.id).map((x) => x.id))
+  const c = r.json?.checked
+  const checked = c?.text?.trim()
+    ? c.source_ids?.length
+      ? sanitizeClaims(company.id, [c], r.runId).kept.find((k) => k.source_ids.some((id) => pub.has(id))) ?? null
+      : pub.size ? null : { text: c.text.trim(), source_ids: [] }
+    : null
+  const questions = ctx.lead ? [] : sanitizeClaims(company.id, r.json?.questions ?? [], r.runId).kept.slice(0, 3)
+  return { runId: r.runId, opportunities, checked, questions, dropped: raw.length - kept.length }
 }
