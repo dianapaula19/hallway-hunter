@@ -11,6 +11,7 @@
 #   3. npm ci + build with basePath /apps/hallway-hunter (detached; log in ~/projects/hh-setup.log)
 #   4. ~/apps/hallway-hunter/matrix.json -> Matrix starts matrix/prefix-proxy.mjs, which re-adds the
 #      /apps/hallway-hunter prefix the gateway strips, in front of `next start`. Open it from the Matrix desktop.
+#   5. Velho's background agent loop, supervised (log in ~/projects/velho-loop.log)
 # data/hh.db (node:sqlite) is not deployed; upload one with `matrix upload --force data/hh.db projects/hallway-hunter/data/hh.db`.
 # Note: `matrix run` needs `-C .` (CLI 0.3.22 sends an empty cwd otherwise and the gateway answers 400).
 set -euo pipefail
@@ -38,4 +39,10 @@ box 'cd projects/hallway-hunter && setsid nohup sh -c "set -e; set -a; . ./.env.
 echo "wait for SETUP_DONE:  matrix run -C . -- tail -3 projects/hh-setup.log"
 
 run matrix upload --force "$REPO/matrix/matrix.json" apps/hallway-hunter/matrix.json
+
+# 5. Velho's background agent: 22:00 Helsinki night path for the day's leads, 07:30 digest (printed to the
+#    log; Telegram only with MATRIX_TOKEN + an allow-listed chat). Supervised; `velho-loop` marks it.
+#    Log: ~/projects/velho-loop.log
+box 'pkill -f "[v]elho-loop"; true'  # separate call: the start command below names the loop, so pkill would match its own shell
+box 'cd projects/hallway-hunter && setsid nohup sh -c "while true; do node --env-file-if-exists=.env.local matrix/box-loop.mjs; sleep 30; done" velho-loop >> ../velho-loop.log 2>&1 < /dev/null &'
 ((APPLY)) || echo "(dry run: nothing was sent. Re-run with --apply.)"
