@@ -1,5 +1,6 @@
 import { all } from "@/lib/db.ts"
 import { hasKey } from "@/lib/claude.ts"
+import { recheckWaiting } from "@/lib/night/recheck.ts"
 import type { AgentRun, AgentStep, Approval, OutboxDraft } from "@/lib/types.ts"
 
 export const dynamic = "force-dynamic"
@@ -11,7 +12,12 @@ const clip = (v: unknown) => {
   return s.length > 600 ? s.slice(0, 600) + " …" : s
 }
 
+// Stored compliance results are from the night each draft was written. Re-run today's rules once per server process
+// (deterministic, a few ms) so /hq never opens on a hold that a rule fix already cleared, or misses one a new rule adds.
+let rechecked = false
+
 export function GET() {
+  if (!rechecked) { rechecked = true; try { recheckWaiting() } catch (e) { console.error("compliance recheck failed", e) } }
   const runs = all<AgentRun>("SELECT * FROM agent_runs ORDER BY started_at DESC LIMIT 20")
   const steps = runs.length
     ? all<AgentStep>(`SELECT * FROM agent_steps WHERE run_id IN (${runs.map(() => "?").join(",")}) ORDER BY seq`, ...runs.map((r) => r.id))
