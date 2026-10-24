@@ -56,6 +56,7 @@ export default function CapturePage() {
   const [lang, setLang] = useState<"fi-FI" | "en-US">("en-US")
   const [listening, setListening] = useState(false)
   const [transcript, setTranscript] = useState("")
+  const [role, setRole] = useState("") // job title from the badge (prefilled) or typed; the note may not say it
   // On by default: at a demo the note is made up on the spot about a real company, and the page must say so.
   const [demoNote, setDemoNote] = useState(true)
   const [leads, setLeads] = useState<Lead[]>([])
@@ -115,6 +116,7 @@ export default function CapturePage() {
         })
       }
       setCap(r)
+      setRole(r.extracted?.role ?? "")
       if (r.auto) return await runScout(r.auto, start, "auto_match", signal)
       setBusy(null)
     } catch (e) { if (!aborted(e)) { setError(plain(e)); setBusy(null) } }
@@ -147,7 +149,7 @@ export default function CapturePage() {
     if (!company || !transcript.trim()) return
     setBusy("Saving lead (names scrubbed)…")
     try {
-      const r = await post<{ lead?: Lead; error?: string }>("/api/lead", JSON.stringify({ company_id: company.id, transcript, synthetic: demoNote }))
+      const r = await post<{ lead?: Lead; error?: string }>("/api/lead", JSON.stringify({ company_id: company.id, transcript, synthetic: demoNote, role }))
       if (r.error) setNoteMsg(r.error); else {
         if (process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) posthog.capture("lead_saved")
         setTranscript(""); setNoteMsg(null); await loadLeads(company.id)
@@ -311,6 +313,7 @@ export default function CapturePage() {
               </div>
               {noteMsg && <p className={s.error} role="alert">{noteMsg}</p>}
               <textarea className={s.input} value={transcript} onChange={(e) => setTranscript(e.target.value)} rows={4} placeholder="Transcript appears here. Edit before saving." aria-label="Voice note transcript" />
+              <input className={s.input} value={role} onChange={(e) => setRole(e.target.value)} placeholder="Their job title (from the badge, or ask)" aria-label="Their job title" autoComplete="off" />
               <label className={s.demoNote}>
                 <input type="checkbox" checked={demoNote} onChange={(e) => setDemoNote(e.target.checked)} />
                 <span>Demo note: invented for a demo, and labelled that way on every page. Untick only for a real conversation.</span>
