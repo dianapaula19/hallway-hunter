@@ -3,13 +3,14 @@ import { useEffect, useState } from "react"
 import posthog from "posthog-js"
 import type { AgentRun, Approval, OutboxDraft, SkepticScore } from "@/lib/types.ts"
 import { withBase, newTab } from "@/lib/base.ts"
+import { Wordmark } from "../wordmark"
 import s from "./hq.module.css"
 
 type Step = { seq: number; kind: string; name: string; ms: number; input: string | null; output: string | null }
 type Board = {
   key: boolean
   runs: (AgentRun & { steps: Step[] })[]
-  approvals: (Approval & { compliance: { ok: boolean; issues: string[] } | null; skeptic: SkepticScore[] | null; page_status: string })[]
+  approvals: (Approval & { compliance: { ok: boolean; issues: string[] } | null; skeptic: SkepticScore[] | null; page_status: string; company_id: string | null; company: string | null })[]
   outbox: OutboxDraft[]
   pages: { id: string; slug: string; status: string; created_at: string; company: string }[]
   companies: { id: string; name: string }[]
@@ -17,6 +18,13 @@ type Board = {
 }
 
 const time = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+const PAGE_STATUS: Record<string, string> = { draft: "Being written", pending_approval: "Waiting", approved: "Approved", killed: "Killed" }
+const DECISION: Record<string, string> = { APPROVED: "Approved. A draft email is in the outbox.", EDITED: "Approved with edits. A draft email is in the outbox.", REJECTED: "Killed." }
+const AGENT: Record<string, string> = {
+  night_path: "Night path", researcher: "Research", showrunner: "Audio script", skeptic_ceo: "Reader test", compliance: "Compliance check",
+  quick_scout: "Quick brief", vision_extract: "Badge reading", lead_extract: "Voice note", digest: "Digest",
+}
 const dur = (r: AgentRun) => `${(((r.ended_at ? Date.parse(r.ended_at) : Date.now()) - Date.parse(r.started_at)) / 1000).toFixed(1)}s`
 
 export default function HQ() {
@@ -69,50 +77,101 @@ export default function HQ() {
 
   const leads = b?.leads.filter((l) => l.company_id === (company || b?.companies[0]?.id)) ?? []
 
+  // One group per company: the newest draft up front, older versions behind "N earlier versions" (approvals come newest first).
+  const groups = new Map<string, Board["approvals"]>()
+  for (const a of b?.approvals ?? []) groups.set(a.company_id ?? a.id, [...(groups.get(a.company_id ?? a.id) ?? []), a])
+
   return (
-    <main className={s.wrap}>
-      <header className={s.head}>
-        <div>
-          <h1 className={s.h1}>Velho HQ</h1>
-          <p className={s.muted}>Night path runs, gates and approvals. Approving only creates a local draft to our own inbox. Nothing is sent.</p>
-        </div>
-        {b && <span className={b.key ? s.ok : s.warn}>{b.key ? "API key loaded" : "No API key: offline templates"}</span>}
+    <main className={`container ${s.wrap}`}>
+      <header className={s.top}>
+        <Wordmark product="HQ" href="/hq" />
+        <span className={s.internal}>Internal · for Velho consultants</span>
       </header>
-      {err && <p className={s.warn}>Board offline: {err}</p>}
+      <h1 className={s.h1}>Drafts to review</h1>
+      <p className={s.lede}>Overnight drafts wait here for a person. Approving only writes a draft email to our own inbox. Nothing is sent.</p>
+      {err && <p className={s.alert}>The board is offline: {err}</p>}
 
-      <section className={s.panel}>
-        <h2 className={s.h2}>Run night path now</h2>
-        <div className={s.row}>
-          <select value={company} disabled={!!busy} aria-label="Company" onChange={(e) => { setCompany(e.target.value); setLead("") }}>
-            {b?.companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-          <select value={lead} disabled={!!busy} aria-label="Lead" onChange={(e) => setLead(e.target.value)}>
-            <option value="">Latest lead (or none)</option>
-            {leads.map((l) => <option key={l.id} value={l.id}>{l.role} · {time(l.created_at)}</option>)}
-          </select>
-          <button className={s.primary} onClick={runNight} disabled={!!busy || !b?.companies.length}>{busy === "night" ? "Running…" : "Run"}</button>
-        </div>
-        {msg && <p className={s.muted}>{msg}</p>}
-      </section>
+      <div className={s.cols}>
+        <section className={s.mainCol} aria-labelledby="waiting">
+          <h2 id="waiting" className={s.h2}>Waiting for approval <span className={s.count}>{groups.size}</span></h2>
+          {b && !groups.size && <p className={s.muted}>Nothing waiting. New drafts appear here after the night path runs.</p>}
+          {[...groups.values()].map(([latest, ...older]) => (
+            <article key={latest.id} className={s.card}>
+              <div className={s.cardHead}>
+                <h3 className={s.company}>{latest.company ?? latest.payload.subject}</h3>
+                <span className={s.status} data-s="waiting">Waiting</span>
+              </div>
+              <ApprovalCard a={latest} />
+              {older.length > 0 && (
+                <details className={s.older}>
+                  <summary>{older.length} earlier {older.length === 1 ? "version" : "versions"}</summary>
+                  {older.map((a) => <ApprovalCard key={a.id} a={a} />)}
+                </details>
+              )}
+            </article>
+          ))}
+        </section>
 
-      <section className={s.panel}>
-        <h2 className={s.h2}>Pending approvals <span className={s.count}>{b?.approvals.length ?? 0}</span></h2>
-        {!b?.approvals.length && <p className={s.muted}>Nothing waiting.</p>}
-        {b?.approvals.map((a) => <ApprovalCard key={a.id} a={a} />)}
-      </section>
+        <aside className={s.side}>
+          <section className={s.card}>
+            <h2 className={s.h2}>Run the night path now</h2>
+            <p className={s.muted}>Research, audio script and checks for one company. Takes 25-40 s.</p>
+            <div className={s.form}>
+              <select className={s.field} value={company} disabled={!!busy} aria-label="Company" onChange={(e) => { setCompany(e.target.value); setLead("") }}>
+                {b?.companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <select className={s.field} value={lead} disabled={!!busy} aria-label="Lead" onChange={(e) => setLead(e.target.value)}>
+                <option value="">Latest lead (or none)</option>
+                {leads.map((l) => <option key={l.id} value={l.id}>{l.role} · {when(l.created_at)}</option>)}
+              </select>
+              <button className={s.primary} onClick={runNight} disabled={!!busy || !b?.companies.length}>{busy === "night" ? "Running…" : "Run"}</button>
+            </div>
+            {msg && <p className={s.note} role="status">{msg}</p>}
+          </section>
 
-      <section className={s.panel}>
-        <h2 className={s.h2}>Agent runs <span className={s.count}>last 20</span></h2>
-        <ul className={s.runs}>
+          <section className={s.card}>
+            <h2 className={s.h2}>Pages</h2>
+            <ul className={s.list}>
+              {b?.pages.map((p) => (
+                <li key={p.id}>
+                  <a href={withBase(`/p/${p.slug}`)} {...newTab}>{p.company}</a>
+                  <span className={s.status} data-s={p.status}>{PAGE_STATUS[p.status] ?? p.status}</span>
+                  <span className={s.time}>{when(p.created_at)}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className={s.card}>
+            <h2 className={s.h2}>Outbox <span className={s.count}>drafts to our own inbox</span></h2>
+            {b && !b.outbox.length && <p className={s.muted}>No drafts yet.</p>}
+            <ul className={s.list}>
+              {b?.outbox.map((o) => (
+                <li key={o.id}>
+                  <details>
+                    <summary>{o.subject} <span className={s.time}>→ {o.to_addr}</span></summary>
+                    <pre className={s.pre}>{o.body}</pre>
+                  </details>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </aside>
+      </div>
+
+      <details className={s.runs} open={job ? true : undefined}>
+        <summary className={s.h2}>Agent runs <span className={s.count}>last 20, newest first</span></summary>
+        <ul className={s.runList}>
           {b?.runs.map((r) => (
             <li key={r.id}>
               <details open={r.status === "running"}>
                 <summary>
-                  <span className={`${s.dot} ${s[r.status]}`} />
-                  <strong>{r.agent}</strong>
-                  <span className={s.muted}>{r.model} · {r.tool_calls} tools · {dur(r)} · {time(r.started_at)}</span>
+                  <span className={`${s.dot} ${s[r.status]}`} aria-label={r.status} />
+                  <strong>{AGENT[r.agent] ?? r.agent}</strong>
+                  <span className={s.time}>{dur(r)} · {r.tool_calls} tool calls · {time(r.started_at)}</span>
                   {r.error && <span className={s.errText}>{r.error}</span>}
                 </summary>
+                <p className={s.time}>{r.agent} · {r.model}</p>
                 <ol className={s.steps}>
                   {r.steps.map((st) => (
                     <li key={st.seq} className={s[`k_${st.kind}`]}>
@@ -126,34 +185,12 @@ export default function HQ() {
             </li>
           ))}
         </ul>
-      </section>
+      </details>
 
-      <div className={s.two}>
-        <section className={s.panel}>
-          <h2 className={s.h2}>Pages</h2>
-          <ul className={s.list}>
-            {b?.pages.map((p) => (
-              <li key={p.id}>
-                <a href={withBase(`/p/${p.slug}`)} {...newTab}>{p.company}</a> <span className={`${s.badge} ${s[`p_${p.status}`]}`}>{p.status}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-        <section className={s.panel}>
-          <h2 className={s.h2}>Outbox <span className={s.count}>drafts only</span></h2>
-          {!b?.outbox.length && <p className={s.muted}>No drafts yet.</p>}
-          <ul className={s.list}>
-            {b?.outbox.map((o) => (
-              <li key={o.id}>
-                <details>
-                  <summary>{o.subject} <span className={s.muted}>→ {o.to_addr}</span></summary>
-                  <pre className={s.pre}>{o.body}</pre>
-                </details>
-              </li>
-            ))}
-          </ul>
-        </section>
-      </div>
+      <footer className={s.foot}>
+        {b && <span><span className={`${s.dot} ${b.key ? s.ok : s.running}`} aria-hidden /> {b.key ? "Model connected" : "No model key: offline templates"}</span>}
+        <span>Board refreshes every 2 s</span>
+      </footer>
     </main>
   )
 }
@@ -168,6 +205,7 @@ function ApprovalCard({ a }: { a: Board["approvals"][number] }) {
   const blocked = !!a.compliance && !a.compliance.ok
   const rounds = a.skeptic ?? []
   const last = rounds.at(-1)
+  const low = last ? Math.min(last.stop, last.read, last.reply) : null
 
   const cancel = () => { setMode(""); setSubject(a.payload.subject); setBody(a.payload.body); setNote("") }
 
@@ -183,47 +221,52 @@ function ApprovalCard({ a }: { a: Board["approvals"][number] }) {
       if (r.ok && process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) {
         posthog.capture("approval_decided", { action })
       }
-      setOut(r.ok ? j.status : j.error)
+      setOut(r.ok ? DECISION[j.status] ?? j.status : `Not saved: ${j.error}`)
     } catch { setOut("Lost the connection; reload to see whether it went through.") } finally { setSending(false) }
   }
 
   return (
-    <article className={s.appr}>
-      <div className={s.apprHead}>
-        <strong>{a.payload.subject}</strong>
-        <a href={withBase(`/p/${a.payload.page_slug}`)} {...newTab}>Open page ↗</a>
-      </div>
-      <div className={s.gates}>
-        <span className={blocked ? s.warn : s.ok}>{blocked ? `Compliance: ${a.compliance!.issues.length} issue(s)` : "Compliance ok"}</span>
-        {rounds.map((r, i) => (
-          <span key={i} className={Math.min(r.stop, r.read, r.reply) >= 7 ? s.ok : s.warn}>
-            Skeptic r{i}: {r.stop}/{r.read}/{r.reply}
-          </span>
-        ))}
-        {!rounds.length && <span className={s.warn}>Skeptic: not run</span>}
-        {last && Math.min(last.stop, last.read, last.reply) < 7 && <span className={s.warn}>Internal: below bar, min {Math.min(last.stop, last.read, last.reply)}/10</span>}
-      </div>
-      {blocked && <ul className={s.issues}>{a.compliance!.issues.map((x, i) => <li key={i}>{x}</li>)}</ul>}
-      {last?.notes && <p className={s.muted}>CEO notes: {last.notes}</p>}
+    <div className={s.appr}>
+      <p className={s.meta}>
+        <span>Draft from {when(a.created_at)}</span>
+        <a href={withBase(`/p/${a.payload.page_slug}`)} {...newTab}>Open page</a>
+      </p>
+      {blocked && <p className={s.hold}>On hold until the compliance check is clear: {a.compliance!.issues.join("; ")}.</p>}
+
+      <details className={s.checks}>
+        <summary>Quality checks <span className={s.time}>
+          {` · compliance ${blocked ? `${a.compliance!.issues.length} to look at` : a.compliance ? "clear" : "not run"} · reader test ${low == null ? "not run" : `${low}/10`}`}
+        </span></summary>
+        <dl className={s.dl}>
+          <dt>Compliance</dt>
+          <dd>{blocked ? <ul className={s.issues}>{a.compliance!.issues.map((x, i) => <li key={i}>{x}</li>)}</ul> : a.compliance ? "No promises, personal names or confidential details found." : "Not run."}</dd>
+          <dt>Reader test <span className={s.time}>(a model reads it as a busy CEO; scores out of 10, aim 7+)</span></dt>
+          <dd>{rounds.length ? (
+            <ol className={s.rounds}>{rounds.map((r, i) => <li key={i}>Round {i + 1}: would stop {r.stop} · would read {r.read} · would reply {r.reply}</li>)}</ol>
+          ) : "Not run."}</dd>
+          {last?.notes && <><dt>Reader notes</dt><dd>{last.notes}</dd></>}
+        </dl>
+      </details>
 
       {mode === "edit" && (
         <div className={s.edit}>
-          <input value={subject} onChange={(e) => setSubject(e.target.value)} />
-          <textarea rows={7} value={body} onChange={(e) => setBody(e.target.value)} />
+          <input className={s.field} aria-label="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} />
+          <textarea className={s.field} aria-label="Email body" rows={7} value={body} onChange={(e) => setBody(e.target.value)} />
         </div>
       )}
-      {mode === "kill" && <input className={s.note} placeholder="Why kill it? (required)" value={note} onChange={(e) => setNote(e.target.value)} />}
+      {mode === "kill" && <input className={`${s.field} ${s.wide}`} placeholder="Why kill it? (required)" aria-label="Reason for killing this draft" value={note} onChange={(e) => setNote(e.target.value)} autoFocus />}
 
-      <div className={s.row}>
-        {mode === "" && <>
-          <button className={s.primary} disabled={blocked || sending} title={blocked ? "Blocked by compliance" : ""} onClick={() => act("approve")}>Approve</button>
-          <button disabled={blocked} onClick={() => setMode("edit")}>Edit</button>
-          <button onClick={() => setMode("kill")}>Kill</button>
-        </>}
-        {mode === "edit" && <><button className={s.primary} disabled={blocked || sending} onClick={() => act("edit")}>Save as edited</button><button onClick={cancel}>Cancel</button></>}
-        {mode === "kill" && <><button className={s.danger} disabled={!note.trim() || sending} onClick={() => act("kill")}>Kill page</button><button onClick={cancel}>Cancel</button></>}
-        {out && <span className={s.muted}>{out}</span>}
-      </div>
-    </article>
+      {out ? <p className={s.note} role="status">{out}</p> : (
+        <div className={s.actions}>
+          {mode === "" && <>
+            <button className={s.primary} disabled={blocked || sending} title={blocked ? "On hold: see the compliance check" : ""} onClick={() => act("approve")}>Approve</button>
+            <button className={s.secondary} disabled={blocked} onClick={() => setMode("edit")}>Edit</button>
+            <button className={s.textBtn} onClick={() => setMode("kill")}>Kill…</button>
+          </>}
+          {mode === "edit" && <><button className={s.primary} disabled={blocked || sending} onClick={() => act("edit")}>Save and approve</button><button className={s.textBtn} onClick={cancel}>Cancel</button></>}
+          {mode === "kill" && <><button className={s.danger} disabled={!note.trim() || sending} onClick={() => act("kill")}>Kill this draft</button><button className={s.textBtn} onClick={cancel}>Cancel</button></>}
+        </div>
+      )}
+    </div>
   )
 }
