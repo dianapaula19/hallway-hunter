@@ -5,6 +5,8 @@ import type { Claim, Company, EuroFormula, Lead, Source } from "../types.ts"
 import { fetchSite } from "../live/site.ts"
 import { tedSearch } from "../live/ted.ts"
 import { normalizeFormula } from "./formula.ts"
+import { hoursFromQuote } from "./hours.ts"
+import { ASSUME, markInference } from "./compliance.ts"
 import { needsSource, sanitizeClaims } from "./sanitize.ts"
 
 // Words that make a sentence factual under the sanitizer's rule: digits, €/%, and capitalised words after a sentence start.
@@ -86,13 +88,15 @@ Rules:
 - Tools: search_sources reads the evidence store; ted_search and fetch_site add new public evidence (read-only). Use them sparingly.
 - Never scale people to the company's headcount, dealer count or store count: nobody said those people do this task. The company-level case goes in "why" and "path" below, in words.
 Also return:
-- why: ONE sentence (max 35 words) the COO or CEO reads under card 1: the company-level reason this process matters, from a
-  PUBLIC source in the store (a TED award or framework with its month, the company's own site such as its dealer network,
-  service offer or size, or the trade register's industry line). Name the public fact, then tie it to card 1's process in plain
-  logic, e.g. "You won the Lesy ČR harvester service framework in July 2026; every new framework adds dealer parts orders that
-  today get retyped." Cite the public source (and the hallway source if you repeat its detail). Use only facts the cited sources
-  state; the tie is the one inference allowed, with no number. A public source unrelated to the process or the company's scale
-  (e.g. a one-off sale of one machine) is not a reason: then return empty text and empty source_ids. No company blurb.
+- why: ONE or TWO short sentences (max 40 words) the COO or CEO reads FIRST, at the top of the page: the company-level reason
+  this process matters, from a PUBLIC source in the store (a TED award or framework with its month, the company's own site such
+  as its dealer network, service offer or size, or the trade register's industry line). First the public fact, stated only as
+  far as the cited source states it. Then the tie to card 1's process, which no source states, so write it as a clearly marked
+  conditional or question, never as fact: e.g. "You won the Lesy ČR harvester service framework in July 2026. If its service
+  orders reach your dealers' parts desk as PDFs too, they join the retyping." Never "every new framework adds orders" or
+  "this brings more reporting" as a statement. Cite the public source (and the hallway source if you repeat its detail).
+  A public source unrelated to the process or the company's scale (e.g. a one-off sale of one machine) is not a reason: then
+  return empty text and empty source_ids. No company blurb, no number in the tie.
 - path: ONE sentence (max 30 words) framing card 1 as a pilot when its team is small (people 5 or fewer): start with card 1's
   process, then name what the same fix reaches next, e.g. "Start with dealer parts orders; the same reader then handles warranty
   claims and service reports." Name a further process only if a cited source mentions it, and cite it; cite the hallway source
@@ -134,7 +138,8 @@ export async function research(ctx: NightContext, pageId: string): Promise<{ run
     },
   ]
 
-  const lead = ctx.lead ? `Hallway lead (role: ${ctx.lead.role}): pain "${ctx.lead.pain}", quote "${ctx.lead.quote}".` : "No hallway lead."
+  const h = hoursFromQuote(ctx.lead?.quote)
+  const lead = ctx.lead ? `Hallway lead (role: ${ctx.lead.role}): pain "${ctx.lead.pain}", quote "${ctx.lead.quote}".${h ? `\nHours, converted in code from the quote (use exactly these numbers in card 1's claim and formula): ${h.working}.` : ""}` : "No hallway lead."
   const r = await runAgent<{ opportunities: { title: string; claim: Claim; formula: Partial<EuroFormula> }[]; why?: Claim; path?: Claim; questions?: Claim[] }>({
     agent: "researcher", subjectId: pageId, system: SYSTEM, tools, maxToolCalls: 8, effort: "medium", schema: SCHEMA,
     prompt: `Company: ${company.name}${company.business_id ? ` (Y-tunnus ${company.business_id})` : ""}\n${lead}\n\nEvidence store:\n${sourceList(ctx.sources) || "(empty)"}\n\nReturn 1-3 opportunities, only those a cited source directly supports.`,
@@ -150,9 +155,11 @@ export async function research(ctx: NightContext, pageId: string): Promise<{ run
   // "why" must lean on a public source (TED, own site or the trade register); anything else is dropped, not shown uncited.
   const pub = new Set(all<{ id: string }>("SELECT id FROM sources WHERE company_id = ? AND kind IN ('ted', 'site', 'prh')", company.id).map((x) => x.id))
   const w = r.json?.why
-  const why = w?.text?.trim() && opportunities.length
+  // Then the uncited tie is marked as our assumption (sanitize.ts); a line that is only an assumption is no reason at all.
+  const cleanWhy = w?.text?.trim() && opportunities.length
     ? sanitizeClaims(company.id, [w], r.runId).kept.find((k) => k.source_ids.some((id) => pub.has(id))) ?? null
     : null
+  const why = cleanWhy && !markInference(cleanWhy).text.startsWith(ASSUME) ? markInference(cleanWhy) : null
   // "path" may go uncited only when it states no fact (no digit, €, % or proper noun), the script-line rule. When its only
   // facts are card 1's own words ("Start with PDF orders into SAP; …"), it cites card 1's sources rather than being dropped.
   const pt = r.json?.path

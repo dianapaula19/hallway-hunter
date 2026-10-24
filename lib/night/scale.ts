@@ -66,6 +66,26 @@ export function scaleClaim(s: Source, companyName: string): Claim | null {
   return hit ? { text: `${stem(companyName)}'s own site: “${hit.phrase}”.`, source_ids: [s.id] } : null
 }
 
+// A company-level quantity from cited evidence, never a headcount guess: the EU contracts won by the company itself.
+// Counts TED award (or VEAT) sources whose winner line names the company's registered name, plus any TED source the page
+// already cites (the why line). Namesakes abroad ("MIPRO d.o.o." for Mipro Oy) and subsidiaries are left out: undercounting
+// is the honest direction. Two or more, or it is not a scale line.
+export function contractsWon(companyName: string, sources: Pick<Source, "id" | "kind" | "excerpt">[], cited: string[] = []): { n: number; ids: string[]; from: string; to: string } | null {
+  const name = companyName.replace(/\s*\(synthetic\)\s*/i, "").toLowerCase()
+  const won = sources.filter((x) => x.kind === "ted" && /^\d{4}-\d{2}-\d{2} (contract award|veat)\b/.test(x.excerpt) &&
+    (cited.includes(x.id) || (x.excerpt.match(/Tenderer\/winner incl\. (.+)$/)?.[1] ?? "").toLowerCase().split(/,\s*/).some((w) => w.replace(/\.$/, "") === name)))
+  if (won.length < 2) return null
+  const dates = won.map((x) => x.excerpt.slice(0, 10)).sort()
+  return { n: won.length, ids: won.map((x) => x.id), from: dates[0], to: dates.at(-1)! }
+}
+
+// The page's and the reader test's wording of it: the cited count, then the scaling as a marked question, no euro number.
+export function contractsText(c: { n: number; from: string; to: string }, companyName: string): string {
+  const my = (d: string, year = true) => new Date(d).toLocaleDateString("en-GB", { month: "short", ...(year ? { year: "numeric" } : {}), timeZone: "Europe/Helsinki" })
+  const span = my(c.from) === my(c.to) ? my(c.from) : c.from.slice(0, 4) === c.to.slice(0, 4) ? `${my(c.from, false)}–${my(c.to)}` : `${my(c.from)}–${my(c.to)}`
+  return `${c.n} EU contracts won by ${stem(companyName)} on the public record, ${span} (TED). If each brings work like this, the pilot's working repeats per contract; how many do is a question for you, not a number we can source.`
+}
+
 // Self-check (no network): node lib/night/scale.ts
 if (import.meta.main) {
   const assert: typeof import("node:assert/strict") = (await import("node:assert/strict")).default
@@ -76,5 +96,14 @@ if (import.meta.main) {
   assert.equal(scaleSentence("Founded in 2026 employees? no. Nothing else here."), null)
   assert.equal(scaleSentence("Results for 2025 people. Read more.")?.count ?? null, null)
   assert.match(scaleSentence("Intro text. Ponsse has around 2 100 employees and 40 dealers. Next.")!.sentence, /^Ponsse has around 2 100 employees/)
+  const ted = (id: string, excerpt: string) => ({ id, kind: "ted" as const, excerpt })
+  const mipro = [
+    ted("a", '2026-10-08 contract award: "x". Buyer: LUKA KOPER. Tenderer/winner incl. MIPRO, trgovina in storitve, d.o.o..'),
+    ted("b", '2026-09-02 veat: "x". Buyer: Väylävirasto. Tenderer/winner incl. Mipro Oy.'),
+    ted("c", '2026-09-02 veat: "y". Buyer: Väylävirasto. Tenderer/winner incl. Mipro Oy.'),
+  ]
+  assert.deepEqual(contractsWon("Mipro Oy", mipro), { n: 2, ids: ["b", "c"], from: "2026-09-02", to: "2026-09-02" })
+  assert.equal(contractsWon("Mipro Oy", mipro.slice(0, 2)), null)
+  assert.equal(contractsWon("Ponsse Oyj", [ted("d", '2026-07-27 contract award: "x". Buyer: Lesy. Tenderer/winner incl. Ponsse Czech s.r.o..'), ted("e", '2026-09-02 contract award: "x". Buyer: E. Tenderer/winner incl. Ponsse Oyj.')], ["d"])?.n, 2)
   console.log("scale self-check ok")
 }

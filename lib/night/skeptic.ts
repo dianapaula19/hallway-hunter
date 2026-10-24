@@ -28,19 +28,22 @@ const clamp = (n: unknown) => Math.max(0, Math.min(10, Math.round(Number(n) || 0
 export async function skepticScore(
   pageId: string, companyName: string, opps: DraftOpportunity[], lines: ScriptLine[],
   letter: Partial<PageLetter> = {},
+  facts: { hours?: string | null; contracts?: string | null } = {},
 ): Promise<{ runId: string; score: SkepticScore }> {
   const reader = letter.recipient || "CEO"
   // The size comes from a cited public fact when we have one; otherwise the skeptic is told it is unknown, not "200 people".
   const size = letter.scale ? ` (public fact: ${letter.scale.text})` : " (size unknown to you here; do not assume one)"
+  const top = letter.why ? `Top of the page, before the cards. Why it matters at ${companyName}: ${letter.why.text}\n\n` : ""
   const extras = [
-    letter.why ? `Why it matters (under card 1): ${letter.why.text}` : "",
+    facts.hours ? `Hours, converted in code from the hallway note (this arithmetic is correct; do not recompute it or call it inconsistent): ${facts.hours}` : "",
+    facts.contracts ? `Beyond the pilot (under card 1): ${facts.contracts}` : "",
     letter.path ? `Pilot path (under card 1): ${letter.path.text}` : "",
     letter.checked ? `What we checked: ${letter.checked.text}` : "",
     letter.questions?.length ? `What we'd ask you:\n${letter.questions.map((q) => `- ${q.text}`).join("\n")}` : "",
   ].filter(Boolean).join("\n")
   const r = await runAgent<SkepticScore>({
     agent: "skeptic_ceo", subjectId: pageId, system: system(reader, size), schema: SCHEMA, effort: "low",
-    prompt: `Page: "For the ${reader}, ${companyName}, Velho draft", by Velho's AI analysts. The hallway quote was said in person to a Velho consultant at a conference.\n\nCards (each shows its formula, with every input editable):\n${opps.map((o) => { const f = o.formula; return `- ${o.title}: ${o.claim.text} (${o.formula.label} ${fmtEur(eurPerYear(f))}/yr = ${f.hours_per_week} h/week each × ${f.people} people × ${f.weeks_per_year} weeks × €${f.hourly_cost_eur}/h × ${f.automation_share} automatable)` }).join("\n") || "(no cards)"}${extras ? `\n\n${extras}` : ""}\n\nAudio script (the page prints the ask's terms: free, no data, no call, a yes by reply is enough):\n${lines.map((l) => `${l.host}: ${l.text}`).join("\n")}`,
+    prompt: `Page: "For the ${reader}, ${companyName}, Velho draft", by Velho's AI analysts. The hallway quote was said in person to a Velho consultant at a conference.\n\n${top}The pilot: the euro figure covers only the team in its formula, and the page says so ("The pilot: … for a team of N").\nCards (each shows its formula, with every input editable):\n${opps.map((o) => { const f = o.formula; return `- ${o.title}: ${o.claim.text} (${o.formula.label} ${fmtEur(eurPerYear(f))}/yr = ${f.hours_per_week} h/week each × ${f.people} people × ${f.weeks_per_year} weeks × €${f.hourly_cost_eur}/h × ${f.automation_share} automatable)` }).join("\n") || "(no cards)"}${extras ? `\n\n${extras}` : ""}\n\nAudio script (the page prints the ask's terms: free, no data, no call, a yes by reply is enough):\n${lines.map((l) => `${l.host}: ${l.text}`).join("\n")}`,
   })
   const j = r.json
   return { runId: r.runId, score: { stop: clamp(j?.stop), read: clamp(j?.read), reply: clamp(j?.reply), reply_why: String(j?.reply_why ?? "").slice(0, 300), notes: String(j?.notes ?? "").slice(0, 600) } }

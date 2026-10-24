@@ -1,9 +1,11 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { all, get } from "@/lib/db.ts"
-import { isConfidential } from "@/lib/night/compliance.ts"
+import { ASSUME, isConfidential } from "@/lib/night/compliance.ts"
 import type { Claim, Company, Lead, Opportunity, Page, Source } from "@/lib/types.ts"
 import { TERMS } from "@/lib/night/script.ts"
+import { hoursFromQuote } from "@/lib/night/hours.ts"
+import { contractsText, contractsWon } from "@/lib/night/scale.ts"
 import { Chips, Forward, FormulaRow, Player } from "./client.tsx"
 import { checkedLine, fi, fiText, headline, withoutEcho } from "./letter.ts"
 import s from "./page.module.css"
@@ -19,6 +21,18 @@ const Letterhead = () => (
     <span className={s.headNote}>Velho draft · by Velho&apos;s AI analysts</span>
   </header>
 )
+
+// The company-level reason. Text after the ASSUME marker is our inference: shown as such, after the chips, never cited.
+function Why({ why, name, num, lead }: { why: Claim; name: string; num: Record<string, number>; lead?: boolean }) {
+  const [fact, guess] = why.text.split(ASSUME)
+  return (
+    <p className={lead ? `${s.why} ${s.whyLead}` : s.why}>
+      <span className={s.whyLabel}>Why it matters at {name}</span>
+      {fiText(fact.trim())} <Chips ids={why.source_ids} num={num} />
+      {guess && <span className={s.assume}> {ASSUME}{fiText(guess)}</span>}
+    </p>
+  )
+}
 
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Europe/Helsinki" })
 
@@ -53,7 +67,9 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
   // cites public evidence; a "we found nothing public" sentence is not a reason and stays out of the card.
   const why = letter?.why ?? (isPublic(letter?.checked) && !/found nothing/i.test(letter!.checked!.text) ? letter!.checked : null)
   const path = letter?.path ?? null
-  const checked = [letter?.scale, why, path].filter((c): c is Claim => !!c)
+  // Company-level quantity from cited evidence only: EU contracts the company itself won (scale.ts), never a headcount.
+  const won = opps.length ? contractsWon(company.name, [...sources.values()], why?.source_ids) : null
+  const checked = [letter?.scale, why, path, won && { text: "", source_ids: won.ids }].filter((c): c is Claim => !!c)
   // Everything the page rests on, by kind and date, cited or not (a hallway source from another lead is not this page's).
   const checkedItems = checkedLine([...sources.values()].filter((x) => x.kind !== "hallway" || x.id === hallway?.id))
   const questions = letter?.questions ?? []
@@ -74,16 +90,23 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
   // Lead with the question itself; the terms after it are small print, not a second paragraph to wade through.
   const q = ask ? ask.text.indexOf("?") + 1 : 0
   const top = headline(opps[0])
+  const pilotTeam = opps[0] ? `${fi(opps[0].formula.people)} ${opps[0].formula.people === 1 ? "person" : "people"}` : ""
+  // The note's hours converted in code (hours.ts), shown only when card 1's formula uses exactly those numbers.
+  const h = showQuote ? hoursFromQuote(lead.quote) : null
+  // A page made before hours.ts may hold a rounded value (2 for 2.1): shown with that rounding said, never a different number.
+  const hours = h && opps[0] && Math.abs(opps[0].formula.hours_per_week - h.eachPerWeek) <= 0.25 && (!h.people || opps[0].formula.people === h.people) ? h : null
+  const rounded = hours && opps[0].formula.hours_per_week !== hours.eachPerWeek ? `; the formula rounds it to ${fi(opps[0].formula.hours_per_week)} h` : ""
   // Two sentences the hallway contact can forward to the executive: the process with its estimate, then the one question.
   const fwdFirst = opps[0] && top
     ? `${fiText(opps[0].claim.text.split(/(?<=[.!?])\s/)[0])} ${top.eur ?? top.h1.at(-1)!.replace(/\.$/, "")} (${top.label}; the working is on the page).`
     : questions[0] ? `What the public record shows: ${fiText(questions[0].text)}` : null
-  const fwdText = fwdFirst && ask ? [fwdFirst, why && fiText(why.text), fiText(ask.text.slice(0, q))].filter(Boolean).join(" ") : null
+  const fwdText = fwdFirst && ask ? [why && fiText(why.text), fwdFirst, fiText(ask.text.slice(0, q))].filter(Boolean).join(" ") : null
   // We store no event name, only when the lead was captured.
   const met = lead ? `Met in a conference hallway, ${day(lead.created_at)}` : null
   // Reply yes opens the viewer's own mail app, addressed to our inbox. The app sends nothing (CLAUDE.md rule 1).
   // No real inbox configured (the db.ts fallback is a localhost address): say what the button does instead of linking it.
-  const inbox = process.env.HH_OWN_INBOX
+  // The .env.example placeholder (your-team@velho.example) counts as unset: .example addresses never receive mail.
+  const inbox = process.env.HH_OWN_INBOX && !/\.example$/i.test(process.env.HH_OWN_INBOX) ? process.env.HH_OWN_INBOX : null
   const yes = inbox && `mailto:${inbox}?subject=${encodeURIComponent(`Yes: the one-page teardown for ${name}`)}&body=${encodeURIComponent(`Yes, please send the teardown.\n\n(Velho draft ${slug})`)}`
 
   return (
@@ -96,8 +119,10 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
         {top ? (
           <>
             <h1 className={s.h1}>{top.h1.map((t) => <span key={t}>{t}</span>)}</h1>
+            {why && <Why why={why} name={name} num={num} lead />}
             <p className={s.deck}>
-              {top.eur && <>{top.eur}, </>}<span className={s.tag}>{top.label}</span> for one fix{top.h1.length === 1 && top.h1[0].startsWith(opps[0].title.slice(0, 12)) ? "" : `: ${opps[0].title.charAt(0).toLowerCase() + opps[0].title.slice(1)}`}. The working is below; change any number.
+              <span className={s.pilotLabel}>The pilot</span>{" "}
+              {pilotTeam}, one task{top.h1.length === 1 && top.h1[0].startsWith(opps[0].title.slice(0, 12)) ? "" : `, ${opps[0].title.charAt(0).toLowerCase() + opps[0].title.slice(1)}`}{top.eur ? <>: {top.eur.charAt(0).toLowerCase() + top.eur.slice(1)} <span className={s.tag}>{top.label}</span></> : null}. It covers this team, not all of {name}; the working is below, change any number.
             </p>
           </>
         ) : <h1 className={s.h1}>A first look at {name}</h1>}
@@ -126,12 +151,14 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
               <li key={o.id} className={s.card}>
                 <h3 className={s.h3}>{opps.length > 1 && <span className={s.cardNum}>{i + 1}.</span>}{o.title}</h3>
                 <p className={s.claim}>{fiText(withoutEcho(o.claim.text, showQuote ? lead.quote : null))} <Chips ids={o.claim.source_ids} num={num} /></p>
-                {i === 0 && why && <p className={s.why}><span className={s.whyLabel}>Why it matters at {name}</span>{fiText(why.text)} <Chips ids={why.source_ids} num={num} /></p>}
+                {i === 0 && !top && why && <Why why={why} name={name} num={num} />}
                 <FormulaRow formula={o.formula} chips={<Chips ids={o.formula.input_source_ids} num={num} />} />
-                {i === 0 && (path || letter?.scale) && (
+                {i === 0 && hours && <p className={s.hours}>Hours from the note, worked out: {fiText(hours.working)}{rounded}.</p>}
+                {i === 0 && (path || letter?.scale || won) && (
                   <p className={s.path}>
                     {path && <><span className={s.whyLabel}>Start as a pilot</span>{fiText(path.text)} <Chips ids={path.source_ids} num={num} /> </>}
-                    <span className={s.muted}>The estimate covers the {fi(o.formula.people)} {o.formula.people === 1 ? "person" : "people"} in the formula, not all of {name}.{letter?.scale && <> For scale, {fiText(letter.scale.text)} <Chips ids={letter.scale.source_ids} num={num} /></>}</span>
+                    {won && <><span className={s.whyLabel}>Beyond the pilot</span>{fiText(contractsText(won, company.name))} <Chips ids={won.ids} num={num} /> </>}
+                    {letter?.scale && <span className={s.muted}>For scale, {fiText(letter.scale.text)} <Chips ids={letter.scale.source_ids} num={num} /></span>}
                   </p>
                 )}
               </li>
