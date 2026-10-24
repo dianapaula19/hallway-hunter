@@ -23,7 +23,8 @@ export function GET() {
       steps: steps.filter((s) => s.run_id === r.id).map((s) => ({ seq: s.seq, kind: s.kind, name: s.name, ms: s.ms, input: clip(s.input), output: clip(s.output) })),
     })),
     approvals: all<Approval>(
-      `SELECT a.*, p.compliance, p.skeptic, p.status AS page_status FROM approvals a LEFT JOIN pages p ON p.id = a.ref_id WHERE a.status = 'PENDING' ORDER BY a.created_at DESC`),
+      `SELECT a.*, p.compliance, p.skeptic, p.status AS page_status, p.company_id, c.name AS company FROM approvals a
+       LEFT JOIN pages p ON p.id = a.ref_id LEFT JOIN companies c ON c.id = p.company_id WHERE a.status = 'PENDING' ORDER BY a.created_at DESC`),
     outbox: all<OutboxDraft>("SELECT * FROM outbox ORDER BY created_at DESC LIMIT 20"),
     pages: all("SELECT p.id, p.slug, p.status, p.created_at, c.name AS company FROM pages p JOIN companies c ON c.id = p.company_id ORDER BY p.created_at DESC LIMIT 20"),
     companies: all("SELECT id, name FROM companies ORDER BY created_at DESC LIMIT 50"),
