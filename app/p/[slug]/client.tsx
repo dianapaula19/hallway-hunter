@@ -62,6 +62,7 @@ export function Player({ lines, num }: { lines: ScriptLine[]; num: Record<string
   const voices = useRef<{ A?: SpeechSynthesisVoice; B?: SpeechSynthesisVoice; same: boolean }>({ same: true })
   const gen = useRef(0) // bumps on every start/stop so stale onend callbacks are ignored
   const [voiceNote, setVoiceNote] = useState("")
+  const [showText, setShowText] = useState(false) // transcript folds away to keep the page short; opens on play
 
   useEffect(() => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) { setSupported(false); return }
@@ -101,6 +102,7 @@ export function Player({ lines, num }: { lines: ScriptLine[]; num: Record<string
     const g = ++gen.current
     synth.cancel()
     setState("playing")
+    setShowText(true)
     speak(from, g)
   }
   const toggle = () => {
@@ -133,6 +135,8 @@ export function Player({ lines, num }: { lines: ScriptLine[]; num: Record<string
         {state !== "idle" && <button className={s.stop} onClick={stop}>Stop</button>}
       </div>
       <div className={s.bar} aria-hidden><span style={{ width: `${cur < 0 ? 0 : ((cur + 1) / lines.length) * 100}%` }} /></div>
+      <details className={s.tx} open={showText} onToggle={(e) => setShowText(e.currentTarget.open)}>
+      <summary>{showText ? "Hide the transcript" : "Read the transcript"}</summary>
       <ol className={s.transcript}>
         {lines.map((l, i) => (
           <li key={i} className={i === cur ? s.now : undefined} aria-current={i === cur ? "true" : undefined}>
@@ -141,6 +145,7 @@ export function Player({ lines, num }: { lines: ScriptLine[]; num: Record<string
           </li>
         ))}
       </ol>
+      </details>
     </div>
   )
 }

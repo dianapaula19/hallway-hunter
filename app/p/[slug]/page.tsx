@@ -32,6 +32,8 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
   const synthetic = /\(synthetic\)/i.test(company.name)
   const name = company.name.replace(/\s*\(synthetic\)\s*/i, "")
   const date = new Date(page.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+  // The script's closing question is the page's one ask; show it on its own, not only inside the audio.
+  const ask = script.at(-1)?.text.includes("?") ? script.at(-1) : undefined
 
   return (
     <div className={s.page}>
@@ -48,23 +50,18 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
           <figure className={s.quote}>
             <blockquote>“{lead.quote}”</blockquote>
             <figcaption>
-              {lead.role}, in a hallway conversation {hallway && <Chips ids={[hallway.id]} num={num} />}
+              {lead.role}, to a Velho consultant in a conference hallway {hallway && <Chips ids={[hallway.id]} num={num} />}
             </figcaption>
           </figure>
         )}
 
-        <section className={s.section} aria-labelledby="listen">
-          <h2 id="listen" className={s.h2}>Listen <span className={s.muted}>· about 75 seconds</span></h2>
-          <Player lines={script} num={num} />
-        </section>
-
         <section className={s.section} aria-labelledby="start">
-          <h2 id="start" className={s.h2}>{opps.length === 3 ? "Three places to start" : opps.length ? "Where to start (thin data)" : "Thin data"}</h2>
-          {opps.length === 0 && <p className={s.muted}>We did not find enough public evidence to suggest anything specific yet.</p>}
+          <h2 id="start" className={s.h2}>{opps.length > 1 ? `${opps.length} places to start` : opps.length ? "Where to start" : "Thin data"}</h2>
+          {opps.length === 0 && <p className={s.muted}>We did not find enough evidence to suggest anything specific yet.</p>}
           <ol className={s.cards}>
             {opps.map((o, i) => (
               <li key={o.id} className={s.card}>
-                <span className={s.cardNum}>{String(i + 1).padStart(2, "0")}</span>
+                {opps.length > 1 && <span className={s.cardNum}>{String(i + 1).padStart(2, "0")}</span>}
                 <h3 className={s.h3}>{o.title}</h3>
                 <p className={s.claim}>{o.claim.text} <Chips ids={o.claim.source_ids} num={num} /></p>
                 <FormulaRow formula={o.formula} chips={<Chips ids={o.formula.input_source_ids} num={num} />} />
@@ -73,11 +70,24 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
           </ol>
         </section>
 
+        {ask && (
+          <section className={s.ask} aria-labelledby="ask">
+            <h2 id="ask" className={s.h2}>One question</h2>
+            <p className={s.askText}>{ask.text}</p>
+          </section>
+        )}
+
+        {script.length > 0 && (
+          <section className={s.section} aria-labelledby="listen">
+            <h2 id="listen" className={s.h2}>Listen</h2>
+            <Player lines={script} num={num} />
+          </section>
+        )}
+
         <footer className={s.foot}>
           <p>
-            This page is a <strong>Velho draft</strong>, prepared by Velho&apos;s AI analysts from public registers, public tenders, the company&apos;s own
-            website and one hallway conversation. Every statement links to its source. Every euro figure is an estimate: change any input and it recalculates.
-            Nothing was sent on your behalf.
+            A <strong>Velho draft</strong>, prepared by Velho&apos;s AI analysts from the sources below. A person at Velho approves every draft before it is shared.
+            Every statement links to its source. Every euro figure is an estimate: change any input and it recalculates.
           </p>
           {cited.length > 0 && (
             <ol className={s.sources}>

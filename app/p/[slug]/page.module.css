@@ -1,7 +1,8 @@
-/* Calm, Nordic: paper, ink, one lake-blue accent, generous space. */
+/* Calm, Nordic, typographic: a letter more than a landing page. Serif to read, sans for the controls. */
 .page {
   --paper: #f6f5f1; --card: #ffffff; --ink: #1d211f; --soft: #4a504c; --muted: #7b807c;
   --line: #e3e1da; --accent: #22506e; --accent-soft: #e6eef3; --now: #f1f5f7;
+  --serif: "Iowan Old Style", "Charter", "Bitstream Charter", "Source Serif 4", "Source Serif Pro", Georgia, "DejaVu Serif", serif;
   min-height: 100vh; background: var(--paper); color: var(--ink);
   font: 17px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -22,14 +23,14 @@
 }
 .meta { font-size: 13px; color: var(--muted); }
 
-.h1 { font-size: clamp(30px, 6vw, 42px); line-height: 1.1; font-weight: 600; letter-spacing: -.02em; margin: 0; }
+.h1 { font: 500 clamp(32px, 6vw, 44px)/1.1 var(--serif); letter-spacing: -.01em; margin: 0; }
 .byline { color: var(--muted); margin: 10px 0 0; font-size: 15px; }
 
 .quote { margin: 56px 0 0; padding: 0 0 0 22px; border-left: 2px solid var(--accent); }
-.quote blockquote { margin: 0; font-size: clamp(22px, 4.2vw, 28px); line-height: 1.35; font-weight: 300; letter-spacing: -.01em; }
+.quote blockquote { margin: 0; font: italic 400 clamp(21px, 4.2vw, 27px)/1.4 var(--serif); }
 .quote figcaption { margin-top: 14px; font-size: 14px; color: var(--muted); }
 
-.section { margin-top: 72px; }
+.section { margin-top: 64px; }
 .h2 { font-size: 13px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; color: var(--soft); margin: 0 0 20px; }
 
 /* citation chips + native popovers */
@@ -64,7 +65,11 @@
 .stop { margin-left: auto; font: inherit; font-size: 13px; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; cursor: pointer; }
 .bar { height: 2px; background: var(--line); }
 .bar span { display: block; height: 100%; background: var(--accent); transition: width .4s ease; }
-.transcript { list-style: none; margin: 0; padding: 8px 0; max-height: 420px; overflow-y: auto; }
+.tx summary { padding: 12px 18px; font-size: 13px; color: var(--accent); cursor: pointer; list-style: none; }
+.tx summary::-webkit-details-marker { display: none; }
+.tx summary::before { content: "▸ "; }
+.tx[open] summary::before { content: "▾ "; }
+.transcript { list-style: none; margin: 0; padding: 0 0 8px; }
 .transcript li { display: grid; grid-template-columns: 84px 1fr; gap: 10px; padding: 9px 18px; font-size: 15px; color: var(--soft); transition: background .2s; }
 .transcript li.now { background: var(--now); color: var(--ink); }
 .host { font: 600 11px/2 ui-sans-serif, system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); background: none; border: 0; padding: 0; text-align: left; cursor: pointer; }
@@ -72,10 +77,15 @@
 
 /* cards */
 .cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
-.card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 24px 22px 20px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 26px 24px 22px; }
 .cardNum { font-size: 12px; color: var(--muted); letter-spacing: .1em; font-variant-numeric: tabular-nums; }
-.h3 { font-size: 20px; line-height: 1.3; font-weight: 600; margin: 6px 0 8px; letter-spacing: -.01em; }
-.claim { margin: 0; color: var(--soft); }
+.h3 { font: 600 23px/1.25 var(--serif); margin: 4px 0 10px; }
+.claim { margin: 0; color: var(--soft); font: 18px/1.55 var(--serif); }
+
+/* the one ask */
+.ask { margin-top: 48px; padding: 4px 0 4px 22px; border-left: 2px solid var(--accent); }
+.ask .h2 { margin-bottom: 10px; }
+.askText { margin: 0; font: 400 clamp(19px, 3.6vw, 22px)/1.45 var(--serif); }
 
 .formula { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
 .eur { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -.01em; font-variant-numeric: tabular-nums; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
@@ -92,7 +102,7 @@
 .op { color: var(--muted); padding-top: 6px; }
 .formulaNote { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
 
-.foot { margin-top: 72px; padding-top: 24px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
+.foot { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
 .foot strong { color: var(--soft); }
 .sources { margin: 18px 0 0; padding-left: 22px; }
 .sources li { margin: 4px 0; }
