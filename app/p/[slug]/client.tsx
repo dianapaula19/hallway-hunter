@@ -9,7 +9,7 @@ import s from "./page.module.css"
 
 // Citation chips open the matching native popover (rendered once per source by the page).
 export function Chips({ ids, num }: { ids: string[]; num: Record<string, number> }) {
-  const known = ids.filter((id) => num[id])
+  const known = ids.filter((id) => num[id]).sort((a, b) => num[a] - num[b])
   if (!known.length) return null
   return (
     <span className={s.chips}>

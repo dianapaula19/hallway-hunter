@@ -4,6 +4,7 @@ import type { Claim, ScriptLine, SkepticScore } from "../types.ts"
 import type { DraftOpportunity, NightContext } from "./researcher.ts"
 import { sourceList } from "./researcher.ts"
 import { fmtEur, eurPerYear } from "./formula.ts"
+import { markInference } from "./compliance.ts"
 import { sanitizeScript } from "./sanitize.ts"
 
 const SCHEMA = {
@@ -28,7 +29,8 @@ Rules:
 - Lead with the card closest to the hallway pain and spend most of the script on it: what the task is today, what changes (name the mechanism plainly, e.g. "a tablet form that fills the CRM record"), the estimate. Never undercut the case ("small next to the cost of", "the euro figure is the smaller part"). Mention other cards (if any) in one line each. Never mention cards that are not on the page. Be confident and concrete: the page already shows every caveat and the editable formula, so say "estimate" once per euro figure and do not apologise, say "thin data", or list what you left out.
 - The listener has the page open. Never read a card, the "why" line or the question aloud word for word: say each in fresh,
   shorter spoken words (line 1's hallway quote is the one verbatim line). Give the company-level "why" (if listed below) one
-  short line of its own, citing its source, right after the estimate: it is the reason an executive cares.
+  short line of its own, citing its source, right after the estimate: it is the reason an executive cares. Keep its "if" or
+  "our assumption" wording: the tie from the public fact to the process is not in any source, so never say it as fact.
 - With no cards, spend the script on the questions listed below: what the public record shows and the one thing we would ask.
 - Cite a public source only where it adds a fact the reader would not already know (e.g. a tender a card is built on). Never add a line just to cite something, never describe the company to its own management, and never say what you "checked". Any line with a number, €, % or a proper noun other than the company name MUST cite source ids that support it.
 - A line that repeats a detail from the hallway quote (a system name, a task) cites the hallway source id too, even if it is a question.
@@ -103,7 +105,10 @@ export async function writeScript(
   if (ctx.lead && hallway && !(lines[0]?.text.includes(ctx.lead.quote) && lines[0].source_ids.includes(hallway.id))) {
     lines = [{ host: "A", text: `A ${ctx.lead.role} told a Velho consultant in a conference hallway: “${ctx.lead.quote}”`, source_ids: [hallway.id] }, ...lines]
   }
-  const { kept, dropped } = sanitizeScript(ctx.company.id, lines, r.runId)
+  const { kept: clean, dropped } = sanitizeScript(ctx.company.id, lines, r.runId)
+  // A line citing a public source may not carry an uncited conclusion as fact; it is marked as our assumption (sanitize.ts).
+  const pub = new Set(ctx.sources.filter((x) => x.kind === "ted" || x.kind === "site").map((x) => x.id))
+  const kept = clean.map((l) => (l.source_ids.some((id) => pub.has(id)) ? markInference(l) : l))
   // The ask is the point of the page: if the model's closing question was dropped (e.g. "20 minutes"), add ours.
   if (!kept.at(-1)?.text.includes("?")) kept.push({ host: kept.at(-1)?.host === "A" ? "B" : "A", text: CLOSE, source_ids: [] })
   return { runId: r.runId, lines: fitScript(kept), dropped }

@@ -26,6 +26,8 @@ npm run dev           # http://localhost:3100
 | `/p/<slug>` | The private CEO page (noindex, unguessable slug, linked only from /hq) |
 | `/api/health` | `{ok, model, key: boolean}`. Never returns the key itself |
 
+Our own inbox: copy `.env.example` to `.env.local` and set `HH_OWN_INBOX` to a real address of the team (the placeholder is `your-team@velho.example`). It is the only address the app ever writes to: approving a page on /hq creates a local outbox **draft** to it, never a sent mail. It also turns on the **Reply yes** button on `/p`, a `mailto:` link to that inbox that opens in the reader's own mail app; nothing goes out until they press send there. Unset, or still the `.example` placeholder, drafts are addressed to `hallway-hunter-team@localhost` (shown in /hq's outbox) and `/p` shows no button, only the line "In use, a Reply yes button here opens a reply to your Velho consultant…". The demo DB runs that way.
+
 Password (optional, off by default): start with `HQ_PASSWORD=<something> npm start` (or `npm run dev`) and `proxy.ts` asks for HTTP basic auth (any username, that password) on everything except the `/p/<slug>` pages, which clients open from a link, and `/api/health`. That covers `/`, `/hq`, `/capture` and every other `/api` route, including the one that spends model credits. Leave it unset locally. A `/p` link is protected only by its unguessable slug.
 
 Night path from cron: `npm run night` builds a page for every lead from the last 24 h that has none yet.
@@ -38,10 +40,22 @@ node lib/live/selfcheck.ts --live     # + read-only PRH/TED lookups on real comp
 node lib/night/sanitize.ts            # citation sanitizer
 node lib/night/compliance.ts          # name heuristic, audio length, public-citation rule
 node lib/night/script.ts              # script fitting: one label, no filler, ask = one question, ≤170 words
-node lib/night/scale.ts               # company-size fact parser
+node lib/night/scale.ts               # company-size fact parser, EU contracts won (namesakes left out)
+node lib/night/hours.ts               # hour conversions from the note ("three hours a day between us" -> 15 h a week)
 ```
 
 Output eval, repeatable and with no model call: `npm run eval` reads the stored briefs and pages and writes [`evals/results.md`](evals/results.md) (brief words ≤ 120, citations, public sources cited, audio seconds ≤ 75, labelled euro figures, skeptic scores, compliance re-run with today's rules). `node scripts/eval.ts --recheck` also stores that fresh compliance on drafts waiting for approval.
+
+Move pages between two copies of the DB (a lane worktree's `data/hh.db` into main's) without changing any row already there:
+
+```bash
+HH_DB=<lane>/data/hh.db node scripts/pages-transfer.ts export p_7Rrc_JGH p_MicoMWeT p_AhbpxCx8 > pages.json
+node scripts/pages-transfer.ts import pages.json            # dry run on data/hh.db: prints what it would insert
+node scripts/pages-transfer.ts import pages.json --apply    # one transaction; then:
+node scripts/tidy-demo.ts && node scripts/recheck-compliance.ts
+```
+
+A page travels with its company, lead (the other leads' hallway rows stay behind), sources, briefs, cards, approval and agent runs. Import only inserts: an identical row is skipped, a different row with the same id is reported as a conflict and left alone, and a company whose Y-tunnus sits under another id stops the import. `tidy-demo` then kills the older draft per company, and the recheck applies today's rules to every waiting draft (it also marks an old why line's uncited conclusion as our assumption).
 
 Reset the local data (`data/hh.db` is gitignored and holds every test lead, page, run and outbox draft):
 
@@ -69,7 +83,8 @@ Model: `ANTHROPIC_MODEL`, default `claude-sonnet-5-5`. Every call goes through `
    - **No note, no page.** "Run" on /hq lists only companies with a saved note, and `/api/night` answers 400 with the reason: the page costs the task someone described. A page without a note is only questions from the public record and read weak (Tokmanni: stop 3, read 4, reply 2).
 5. **`/hq` → Run night path now** on that lead, "For the COO" (or CEO, CFO, the person met). The board fills live: a size fact from the company's own site, researcher, showrunner, skeptic (reading as that executive), then compliance. Started from /hq it skips the rewrite round, because someone is waiting: 16-18 s on the cold run below.
 6. **Open `/p/<slug>`.**
-   - The page opens with the hallway quote, attributed by role only, then usually one card: we only show a card a source backs.
+   - The page opens with the hours headline and, right under it, **why it matters at that company**: a cited public fact (a TED award, their own site), then the link to the hallway task written as a conditional or marked "Our assumption, to check with you". Then **the pilot**: the euro estimate for the one team in the formula, "not all of <company>".
+   - Then the hallway quote, attributed by role only, and usually one card: we only show a card a source backs. Under its calculator: the note's hours worked out in code ("“three hours a day” between them = 3 h × 5 working days = 15 h a week for the team of 2, 7,5 h each"), the pilot path, and, when the record shows two or more, "Beyond the pilot: N EU contracts won by <company>", cited, with the scaling left as a question rather than a euro figure.
    - Below it, "One question": a single yes/no offer (a free one-page teardown of that process, no data, no call).
    - Press play: two browser voices read the script, the transcript opens and highlights each line.
    - Edit "people" on a card and the euro estimate recalculates.
@@ -91,13 +106,23 @@ Rehearsed on 2026-10-24 on three Finnish companies that were not in the database
 
 Each company cost one PRH request (the scout now reuses the record the name search returned), 3 in total. Model runs: 12 (Kemira 5, Mipro 5, Teleste 2).
 
+**Round 5 re-run, so the pages exist and open.** The round-4 Kemira and Teleste pages lived only in that lane's DB, which was deleted, so they gave 404 on main. Re-run on 2026-10-25 with the same notes (Kemira now with a job title) on a production build, after the round-5 changes (why lead, pilot framing, hours in code), and moved to main with `scripts/pages-transfer.ts`:
+
+| Company | Name → brief | Note saved | Night path | Page | Reader test (as COO) |
+|---|---|---|---|---|---|
+| Kemira Oyj | 5.7 s (PRH 1.4 + scout 4.2) | 2.4 s | 14.1 s (research 3.7, script 4.7, reader test 4.3) | `/p/p_7Rrc_JGH` | 4/6/3 (round 4: 4/6/2) |
+| Teleste Oyj | 7.2 s (1.4 + 5.8), **not thin**: 2 cited TED awards after the prefix retry | 2.4 s | 0.06 s, offline template (model-down fallback, no key in that process) | `/p/p_MicoMWeT` | not run (no model) |
+| Valmet Oyj (old draft, re-run) | stored | stored | 20.3 s (research 11.8 incl. the size fact from valmet.com, script 4.8, reader test 3.3) | `/p/p_AhbpxCx8` | 5/6/3 (old draft 6/7/4) |
+
+The Teleste template now reads the hours out of the note ("“half a day a week” = 4 h a week each (read as each person), 8 h for the 2 of them"), so its card is an "estimate" cited to the note, not a sector guess. 2 PRH requests and 10 model runs.
+
 **Steps on stage** (laptop on `/hq`, phone on `/capture`):
 
 1. The judge names a company. Type it on `/capture` and press Go. Brief in 5-9 s.
 2. Read one signal aloud and tap its chip.
 3. Speak or type two sentences in their words ("their order team retypes … every morning, two of us, two hours each"), fill the job title, Save lead (2 s). Tap "make the page on /hq".
 4. On `/hq`, Run (For the COO). The board shows research, script and reader test; the page is ready in about 16-20 s.
-5. Open `/p`: the hours headline, the quote with its demo-note label, card 1 with "Why it matters at <company>" (a cited tender or site fact), the pilot line, "What we checked", the one question, play the audio.
+5. Open `/p`: the hours headline, "Why it matters at <company>" right under it (a cited tender or site fact, the link to the task marked as an assumption), "The pilot" line with the team the estimate covers, the quote with its demo-note label, card 1 with the hours worked out, the pilot path, "What we checked", the one question, play the audio.
 
 **Fallbacks:**
 
@@ -134,6 +159,7 @@ node matrix/agent-ops/feed.mjs --check
 
 ## Known limits
 
+- **Reply scores stay at 3-4 out of 10.** Round 5 led the page with the company-level reason, framed the euro figure as "the pilot", and marked every uncited link as an assumption. Kemira moved 4/6/2 → 4/6/3, Valmet's re-run scored 5/6/3, and a measurement re-score with the hours computed in code moved Mipro 5/6/3 → 5/6/4 and kept Ponsse at 5/6/4. The math complaints are gone ("7.5 h × 2 is not 3 h a day"; "a full day conflicts with 2 h a week"), but the readers now call the marked assumption "unproven" and ask to lead with the quote, and still find a team-sized pilot small next to the company. We did not tune the reader test to say otherwise.
 - The skeptic gate scores real pages stop 5-6, read 6-7, reply 4-5 out of 10 as a CEO. Since it reads as the executive the page is for and judges at the company's real size, the Ponsse page scores 5/6/4: its stated reason is that €18 600 is small for Ponsse. We keep the pilot figure honest rather than scale it to a headcount nobody said does the task; the page says the estimate covers the formula's team only and shows the size fact next to it. Pages under the bar still go to approval, marked "below bar" on /hq, with the skeptic's one-line reason for its reply score. The cited "why it matters" line did not lift it: on the cold run Kemira scored 4/6/2 ("€37k is trivial for a 4,900-person company") and Mipro 5/6/3 (the euro figure too small; frame it around the new contract's reporting load).
 - The name scrub is regex plus a model-provided name list. Finnish consonant-gradation forms (Pekka → Pekan) depend on the model listing the name.
 - The site guard checks hostnames only, with no DNS resolution.

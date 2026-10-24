@@ -8,7 +8,8 @@ import { checkCompliance } from "./compliance.ts"
 import { eurPerYear, fmtEur, normalizeFormula } from "./formula.ts"
 import { loadContext, research, type DraftOpportunity, type NightContext } from "./researcher.ts"
 import { sanitizeClaims, sanitizeScript } from "./sanitize.ts"
-import { findScale, scaleClaim } from "./scale.ts"
+import { hoursFromQuote } from "./hours.ts"
+import { contractsText, contractsWon, findScale, scaleClaim } from "./scale.ts"
 import { CLOSE, fitScript, writeScript } from "./script.ts"
 import { BAR, minScore, skepticScore } from "./skeptic.ts"
 
@@ -20,9 +21,12 @@ function offlineOpps(ctx: NightContext, pageId: string): DraftOpportunity[] {
   const hallway = ctx.sources.find((s) => s.kind === "hallway")
   const others = ctx.sources.filter((s) => s.kind !== "hallway")
   const raw: DraftOpportunity[] = []
-  // The template does not read hours or headcount out of the note, so its inputs are defaults: no source, "sector estimate".
+  // Hours and headcount come from the note only when hours.ts can read both out of it (cited to the note, "estimate");
+  // otherwise the inputs are defaults with no source, "sector estimate".
   const pain = ctx.lead?.pain.replace(/[.\s]+$/, "") ?? ""
-  if (ctx.lead && hallway) raw.push({ title: (pain.split(/[,;:]/)[0] || "The task from the hallway").slice(0, 70), claim: { text: `A ${ctx.lead.role} described it in the hallway: ${pain.charAt(0).toLowerCase() + pain.slice(1)}.`, source_ids: [hallway.id] }, formula: normalizeFormula({ hours_per_week: 6, people: 3 }, known) })
+  const h = hoursFromQuote(ctx.lead?.quote)
+  const fromNote = h?.people && hallway ? { hours_per_week: h.eachPerWeek, people: h.people, input_source_ids: [hallway.id] } : { hours_per_week: 6, people: 3 }
+  if (ctx.lead && hallway) raw.push({ title: (pain.split(/[,;:]/)[0] || "The task from the hallway").slice(0, 70), claim: { text: `A ${ctx.lead.role} described it in the hallway: ${pain.charAt(0).toLowerCase() + pain.slice(1)}.`, source_ids: [hallway.id] }, formula: normalizeFormula(fromNote, known) })
   // Only the hallway card has real evidence of a manual task; a public signal stands in only when there is no lead.
   if (!raw.length) for (const s of others.slice(0, 1)) raw.push({ title: s.title.slice(0, 60), claim: { text: `Signal worth a closer look: ${s.excerpt.split(/(?<=\.)\s/)[0].slice(0, 160)}`, source_ids: [s.id] }, formula: normalizeFormula({}, known) })
   const { kept } = sanitizeClaims(ctx.company.id, raw.map((o) => o.claim), runId)
@@ -36,7 +40,7 @@ function offlineScript(ctx: NightContext, pageId: string, opps: DraftOpportunity
   const hallway = ctx.sources.find((s) => s.kind === "hallway")
   const lines: ScriptLine[] = []
   if (ctx.lead && hallway) lines.push({ host: "A", text: `A ${ctx.lead.role} told a Velho consultant in a conference hallway: “${ctx.lead.quote}”`, source_ids: [hallway.id] })
-  opps.forEach((o, i) => lines.push({ host: i % 2 ? "B" : "A", text: `Our ${o.formula.label} for that: about ${fmtEur(eurPerYear(o.formula))} a year, from assumed inputs you can change on the page.`, source_ids: o.claim.source_ids }))
+  opps.forEach((o, i) => lines.push({ host: i % 2 ? "B" : "A", text: `Our ${o.formula.label} for that: about ${fmtEur(eurPerYear(o.formula))} a year, ${o.formula.input_source_ids.length ? "from the hours in the note" : "from assumed inputs"}; you can change every input on the page.`, source_ids: o.claim.source_ids }))
   lines.push({ host: "B", text: CLOSE, source_ids: [] })
   const kept = fitScript(sanitizeScript(ctx.company.id, lines, runId).kept)
   logStep(runId, "info", "offline", "no ANTHROPIC_API_KEY: template script", kept.length)
@@ -109,6 +113,19 @@ async function build(ctx: NightContext, pageId: string, slug: string, letter: Pa
   // 1. research -> 1-3 cards, card 1's company-level "why" and pilot "path" lines, and (no lead) the questions
   const found = live ? await research(withScale, pageId) : { opportunities: offlineOpps(withScale, pageId), why: offlineWhy(withScale), path: null, questions: [] }
   const opps = found.opportunities
+  // Card 1's hours are the code's conversion of the quote, not the model's arithmetic (hours.ts); logged when they differ.
+  const h = hoursFromQuote(ctx.lead?.quote)
+  const hallwayId = withScale.sources.find((x) => x.kind === "hallway")?.id
+  if (h && opps[0] && hallwayId && opps[0].claim.source_ids.includes(hallwayId)) {
+    const f = opps[0].formula, people = h.people ?? f.people
+    const each = h.eachPerWeek
+    if (f.hours_per_week !== each || f.people !== people) {
+      const r = startRun("researcher", pageId, "deterministic")
+      logStep(r, "info", "hours", { model: { hours_per_week: f.hours_per_week, people: f.people } }, { hours_per_week: each, people, working: h.working })
+      endRun(r, "ok", `card 1 hours from the note: ${each} h/week × ${people}`)
+      opps[0] = { ...opps[0], formula: { ...f, hours_per_week: each, people } }
+    }
+  }
   letter.why = found.why
   letter.path = found.path
   letter.questions = found.questions
@@ -121,9 +138,11 @@ async function build(ctx: NightContext, pageId: string, slug: string, letter: Pa
   let lines = live ? (await writeScript(fresh, pageId, opps, undefined, extra)).lines : offlineScript(fresh, pageId, opps)
   savePage(pageId, { script: lines })
   const rounds: SkepticScore[] = []
+  const won = contractsWon(ctx.company.name, fresh.sources, letter.why?.source_ids)
+  const facts = { hours: h?.working ?? null, contracts: won ? contractsText(won, ctx.company.name) : null }
   if (live) {
     for (let round = 0; ; round++) {
-      const { score } = await skepticScore(pageId, ctx.company.name, opps, lines, letter)
+      const { score } = await skepticScore(pageId, ctx.company.name, opps, lines, letter, facts)
       rounds.push(score)
       savePage(pageId, { skeptic: rounds })
       if (minScore(score) >= BAR || round >= rewrites) break

@@ -8,6 +8,7 @@ import { mkdirSync, writeFileSync } from "node:fs"
 import { all, get, run } from "../lib/db.ts"
 import { checkCompliance, letterClaims, speechSecs } from "../lib/night/compliance.ts"
 import { minScore } from "../lib/night/skeptic.ts"
+import { hoursFromQuote } from "../lib/night/hours.ts"
 import type { BriefRow, Claim, Lead, Opportunity, Page, Source } from "../lib/types.ts"
 
 const TARGET_SECS = 75
@@ -52,6 +53,9 @@ const pageRows = pages.map((p) => {
   const euroLines = p.script.filter((l) => /€|\beuros\b/i.test(l.text))
   const labelled = euroLines.every((l) => /estimate/i.test(l.text)) && opps.every((o) => !!o.formula.label)
   const final = p.skeptic.at(-1)
+  // Card 1's hours against the code's conversion of the quote (hours.ts): "n/a" when the note gives no convertible amount.
+  const h = hoursFromQuote(lead?.quote)
+  const hours = !h || !opps[0] ? "n/a" : Math.abs(opps[0].formula.hours_per_week - h.eachPerWeek) <= 0.25 ? `${h.eachPerWeek} h/wk each, matches` : `**${opps[0].formula.hours_per_week} vs ${h.eachPerWeek}**`
   const aloud = readAloud(p.script, [...opps.flatMap((o) => [o.title, o.claim.text]), ...extra.map((c) => c.text)])
   const c = checkCompliance({ companyName: p.name, lead, sources: sources.filter((s) => s.kind !== "hallway" || s.lead_id === lead?.id), opps, lines: p.script, letter: p.letter })
   if (process.argv.includes("--recheck") && p.status === "pending_approval") run("UPDATE pages SET compliance = ? WHERE id = ?", c, p.id)
@@ -59,7 +63,7 @@ const pageRows = pages.map((p) => {
     slug: p.slug, name: p.name, status: p.status, lead: !!lead, cards: opps.length, cites: cited.size, publicCited,
     publicInStore: sources.filter((s) => s.kind === "ted" || s.kind === "site").length,
     scriptWords, secs, secsOk: secs <= TARGET_SECS, labelled, final, rounds: p.skeptic.length,
-    checked: !!p.letter?.checked, scale: !!p.letter?.scale, why: !!p.letter?.why, path: !!p.letter?.path, aloud, compliance: c,
+    checked: !!p.letter?.checked, scale: !!p.letter?.scale, why: !!p.letter?.why, path: !!p.letter?.path, aloud, hours, compliance: c,
   }
 })
 
@@ -72,9 +76,9 @@ const md = [
   ``,
   `Briefs within 120 words: ${briefRows.filter((r) => r.ok).length}/${briefRows.length}. With 2 signals: ${briefRows.filter((r) => r.signals >= 2).length}/${briefRows.length}.`, ``,
   `## Pages (not killed)`, ``,
-  `| Page | Company | Status | Lead | Cards | Cited | Public cited / in store | Why line (public) | Pilot path | Size fact | Script words | Read aloud from page % | Audio s (≤${TARGET_SECS}) | € labelled | Skeptic final stop/read/reply (rounds) | Compliance now |`,
-  `|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|`,
-  ...pageRows.map((r) => `| ${r.slug} | ${r.name} | ${r.status} | ${r.lead ? "yes" : "no"} | ${r.cards} | ${r.cites} | ${r.publicCited} / ${r.publicInStore} | ${r.why ? "yes" : r.checked ? "old 'checked' line" : "**no**"} | ${r.path ? "yes" : "no"} | ${r.scale ? "yes" : "no"} | ${r.scriptWords} | ${r.aloud} | ${r.secs}${r.secsOk ? "" : " **over**"} | ${yes(r.labelled)} | ${r.final ? `${r.final.stop}/${r.final.read}/${r.final.reply} (min ${minScore(r.final)}, ${r.rounds})` : "not run"} | ${r.compliance.ok ? "ok" : r.compliance.issues.join("; ").replace(/\|/g, "/")} |`),
+  `| Page | Company | Status | Lead | Cards | Cited | Public cited / in store | Why line (public) | Pilot path | Size fact | Hours vs note (computed) | Script words | Read aloud from page % | Audio s (≤${TARGET_SECS}) | € labelled | Skeptic final stop/read/reply (rounds) | Compliance now |`,
+  `|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|`,
+  ...pageRows.map((r) => `| ${r.slug} | ${r.name} | ${r.status} | ${r.lead ? "yes" : "no"} | ${r.cards} | ${r.cites} | ${r.publicCited} / ${r.publicInStore} | ${r.why ? "yes" : r.checked ? "old 'checked' line" : "**no**"} | ${r.path ? "yes" : "no"} | ${r.scale ? "yes" : "no"} | ${r.hours} | ${r.scriptWords} | ${r.aloud} | ${r.secs}${r.secsOk ? "" : " **over**"} | ${yes(r.labelled)} | ${r.final ? `${r.final.stop}/${r.final.read}/${r.final.reply} (min ${minScore(r.final)}, ${r.rounds})` : "not run"} | ${r.compliance.ok ? "ok" : r.compliance.issues.join("; ").replace(/\|/g, "/")} |`),
   ``,
   `Pages with audio ≤ ${TARGET_SECS} s: ${pageRows.filter((r) => r.secsOk).length}/${pageRows.length}. Citing a public source: ${pageRows.filter((r) => r.publicCited > 0).length}/${pageRows.length}. Passing compliance with today's rules: ${pageRows.filter((r) => r.compliance.ok).length}/${pageRows.length}. Skeptic min ≥ 7: ${pageRows.filter((r) => r.final && minScore(r.final) >= 7).length}/${pageRows.length}.`,
   ``,
