@@ -1,12 +1,8 @@
 /* Phone-first capture screen in the /p palette (tokens from .paper in globals.css). */
-.main { max-width: 640px; margin: 0 auto; padding: 20px 16px 56px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+.main { max-width: calc(640px + 2 * var(--gutter)); margin: 0 auto; padding: 20px var(--gutter) 56px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
 .side, .results { display: grid; gap: 16px; min-width: 0; }
 
 .head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; }
-:global(.paper) .brand {
-  display: inline-flex; align-items: center; min-height: 44px; text-decoration: none;
-  font-size: 13px; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; color: var(--ink);
-}
 .internal { font-size: 13px; color: var(--muted); }
 .h1 { font: 500 clamp(30px, 8vw, 40px)/1.1 var(--serif); letter-spacing: -.01em; margin: 8px 0 0; text-wrap: balance; }
 .sub { margin: -6px 0 4px; color: var(--soft); font: 18px/1.5 var(--serif); }
@@ -93,7 +89,7 @@ textarea.input { width: 100%; resize: vertical; font: 17px/1.5 var(--serif); }
 .lead { font: 19px/1.55 var(--serif); color: var(--ink); }
 .signals, .openers { padding-left: 1.2em; display: grid; gap: 8px; font: 17px/1.55 var(--serif); color: var(--soft); }
 .signals li::marker { color: var(--accent); }
-.openers li::marker { color: var(--muted); font: 600 14px ui-sans-serif, system-ui, sans-serif; }
+.openers li::marker { color: var(--muted); font: 600 14px var(--font-sans); }
 .dl { margin: 12px 0 0; display: grid; gap: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
 .dl dt { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; color: var(--muted); }
 .dl dd { margin: 2px 0 0; font: 17px/1.55 var(--serif); color: var(--soft); }
@@ -101,7 +97,7 @@ textarea.input { width: 100%; resize: vertical; font: 17px/1.5 var(--serif); }
 /* citation chips: small to read, 44 px to tap (the ::after widens the hit area) */
 .chip {
   position: relative; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; margin: 0 2px;
-  font: 600 12px/1 ui-sans-serif, system-ui, sans-serif; border-radius: 11px; border: 1px solid var(--line);
+  font: 600 12px/1 var(--font-sans); border-radius: 11px; border: 1px solid var(--line);
   background: var(--card); color: var(--accent); cursor: pointer; vertical-align: 2px;
 }
 .chip::after { content: ""; position: absolute; inset: -11px -3px; }
@@ -122,9 +118,9 @@ textarea.input { width: 100%; resize: vertical; font: 17px/1.5 var(--serif); }
 
 /* desktop: input column on the left stays put, results scroll on the right */
 @media (min-width: 1024px) {
-  .main { max-width: 1160px; grid-template-columns: 420px minmax(0, 1fr); gap: 56px; padding: 40px 32px 80px; }
+  .main { max-width: calc(var(--container) + 2 * var(--gutter)); grid-template-columns: 420px minmax(0, 1fr); gap: 56px; padding: 32px var(--gutter) 80px; }
   .side { position: sticky; top: 32px; }
   .results { padding-top: 60px; }
   .card { padding: 24px 26px; }
-  .empty { padding: 26px; border: 1px dashed var(--line); border-radius: 16px; }
+  .empty { padding: 26px 0 0; max-width: 560px; } /* no border: a dashed box read as a drop zone */
 }

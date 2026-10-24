@@ -1,6 +1,6 @@
 "use client"
 import { useEffect, useRef, useState } from "react"
-import Link from "next/link"
+import { Wordmark } from "../wordmark"
 import posthog from "posthog-js"
 import type { Brief, Claim, Company, Lead, Source } from "@/lib/types"
 import { withBase } from "@/lib/base.ts"
@@ -202,7 +202,7 @@ export default function CapturePage() {
       <main className={s.main}>
         <div className={s.side}>
           <header className={s.head}>
-            <Link href="/" className={s.brand}>Hallway Hunter</Link>
+            <Wordmark product="Hallway Hunter" />
             <span className={s.internal}>Internal · for Velho consultants</span>
           </header>
           <h1 className={s.h1}>Who are you talking to?</h1>
@@ -218,7 +218,7 @@ export default function CapturePage() {
             </label>
             <p className={s.or}><span>or type it</span></p>
             <form className={s.row} onSubmit={(e) => { e.preventDefault(); if (q.trim()) void capture(JSON.stringify({ q })); else setError("Type a company name or a Y-tunnus (like 1234567-8) first.") }}>
-              <input className={s.input} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Company name or Y-tunnus" enterKeyHint="search" autoComplete="organization" aria-label="Company name or Y-tunnus" />
+              <input className={s.input} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Company or Y-tunnus" enterKeyHint="search" autoComplete="organization" aria-label="Company name or Y-tunnus" />
               <button className={s.go} disabled={!!busy}>Go</button>
             </form>
             {busy && (
