@@ -26,6 +26,8 @@ npm run dev           # http://localhost:3100
 | `/p/<slug>` | The private CEO page (noindex, unguessable slug, linked only from /hq) |
 | `/api/health` | `{ok, model, key: boolean}`. Never returns the key itself |
 
+Password (optional, off by default): start with `HQ_PASSWORD=<something> npm start` (or `npm run dev`) and `proxy.ts` asks for HTTP basic auth (any username, that password) on everything except the `/p/<slug>` pages, which clients open from a link, and `/api/health`. That covers `/`, `/hq`, `/capture` and every other `/api` route, including the one that spends model credits. Leave it unset locally. A `/p` link is protected only by its unguessable slug.
+
 Night path from cron: `npm run night` builds a page for every lead from the last 24 h that has none yet.
 
 Checks: `npm run typecheck && npm run check && npm run build`, plus self-checks with no network:
