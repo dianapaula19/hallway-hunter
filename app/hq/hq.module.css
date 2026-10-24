@@ -34,6 +34,11 @@
 .hold { margin: 0; font-size: var(--text-md); color: var(--soft); border-left: 2px solid var(--wait); padding: 2px 0 2px 12px; }
 
 .wrap summary { cursor: pointer; }
+.reader { margin: 0; display: grid; gap: 2px; font-size: var(--text-md); }
+.readerScores { font-weight: 600; color: var(--soft); }
+.readerScores[data-low] { color: var(--ink); }
+.readerNote { color: var(--soft); }
+.readerScores .time { white-space: nowrap; }
 .checks { border-top: 1px solid var(--line); padding-top: 10px; font-size: var(--text-md); }
 .checks > summary { font-weight: 600; color: var(--soft); min-height: 28px; }
 .dl { margin: 10px 0 0; display: grid; gap: 4px; }

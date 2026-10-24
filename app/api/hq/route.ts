@@ -27,7 +27,8 @@ export function GET() {
        LEFT JOIN pages p ON p.id = a.ref_id LEFT JOIN companies c ON c.id = p.company_id WHERE a.status = 'PENDING' ORDER BY a.created_at DESC`),
     outbox: all<OutboxDraft>("SELECT * FROM outbox ORDER BY created_at DESC LIMIT 20"),
     pages: all("SELECT p.id, p.slug, p.status, p.created_at, c.name AS company FROM pages p JOIN companies c ON c.id = p.company_id ORDER BY p.created_at DESC LIMIT 20"),
-    companies: all("SELECT id, name FROM companies ORDER BY created_at DESC LIMIT 50"),
+    // The night path opens on the hallway quote, so only companies with a saved lead can be picked.
+    companies: all("SELECT id, name FROM companies c WHERE EXISTS (SELECT 1 FROM leads l WHERE l.company_id = c.id) ORDER BY created_at DESC LIMIT 50"),
     leads: all("SELECT id, company_id, role, created_at FROM leads ORDER BY created_at DESC LIMIT 100"),
   })
 }
