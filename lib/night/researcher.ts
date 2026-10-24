@@ -7,6 +7,11 @@ import { tedSearch } from "../live/ted.ts"
 import { normalizeFormula } from "./formula.ts"
 import { needsSource, sanitizeClaims } from "./sanitize.ts"
 
+// Words that make a sentence factual under the sanitizer's rule: digits, €/%, and capitalised words after a sentence start.
+export const factWords = (t: string) =>
+  t.split(/(?<=[.!?;:])\s+/).flatMap((s) => s.split(/\s+/).slice(1)).map((w) => w.replace(/^[^\p{L}\d€%]+|[^\p{L}\d€%]+$/gu, ""))
+    .filter((w) => /[\d€%]/.test(w) || /^\p{Lu}/u.test(w))
+
 export interface NightContext { company: Company; lead: Lead | null; sources: Source[] }
 export interface DraftOpportunity { title: string; claim: Claim; formula: EuroFormula }
 
@@ -90,7 +95,8 @@ Also return:
   (e.g. a one-off sale of one machine) is not a reason: then return empty text and empty source_ids. No company blurb.
 - path: ONE sentence (max 30 words) framing card 1 as a pilot when its team is small (people 5 or fewer): start with card 1's
   process, then name what the same fix reaches next, e.g. "Start with dealer parts orders; the same reader then handles warranty
-  claims and service reports." Name a further process only if a cited source mentions it, and cite it. Otherwise write it with no
+  claims and service reports." Name a further process only if a cited source mentions it, and cite it; cite the hallway source
+  when you repeat its detail. Otherwise write it with no
   digits and no names ("then the next document type your team retypes") and empty source_ids. Empty text when there is no card.
 - questions: only when there is NO hallway lead: 2 or 3 short questions we would ask their COO, each tied to one public source
   that shows a recurring process (a framework, many call-offs, many sites or stores), citing it, e.g. "You supply 14 municipalities
@@ -147,12 +153,25 @@ export async function research(ctx: NightContext, pageId: string): Promise<{ run
   const why = w?.text?.trim() && opportunities.length
     ? sanitizeClaims(company.id, [w], r.runId).kept.find((k) => k.source_ids.some((id) => pub.has(id))) ?? null
     : null
-  // "path" may go uncited only when it states no fact (no digit, €, % or proper noun), the script-line rule.
+  // "path" may go uncited only when it states no fact (no digit, €, % or proper noun), the script-line rule. When its only
+  // facts are card 1's own words ("Start with PDF orders into SAP; …"), it cites card 1's sources rather than being dropped.
   const pt = r.json?.path
+  const card1 = opportunities[0] ? `${opportunities[0].title} ${opportunities[0].claim.text} ${ctx.lead?.quote ?? ""}`.toLowerCase() : ""
   const path = pt?.text?.trim() && opportunities.length
     ? pt.source_ids?.length ? sanitizeClaims(company.id, [pt], r.runId).kept[0] ?? null
-      : needsSource(pt.text, company.name) ? null : { text: pt.text.trim(), source_ids: [] }
+      : !needsSource(pt.text, company.name) ? { text: pt.text.trim(), source_ids: [] }
+      : factWords(pt.text).every((w) => card1.includes(w.toLowerCase())) ? { text: pt.text.trim(), source_ids: opportunities[0].claim.source_ids }
+      : null
     : null
   const questions = ctx.lead ? [] : sanitizeClaims(company.id, r.json?.questions ?? [], r.runId).kept.slice(0, 3)
   return { runId: r.runId, opportunities, why, path, questions, dropped: raw.length - kept.length }
+}
+
+// Self-check (no model call): node lib/night/researcher.ts
+if (import.meta.main) {
+  const assert: typeof import("node:assert/strict") = (await import("node:assert/strict")).default
+  assert.deepEqual(factWords("Start with emailed PDF orders into SAP; the same reader then handles the next type."), ["PDF", "SAP"])
+  assert.deepEqual(factWords("Start small, then the next document type your team retypes."), [])
+  assert.deepEqual(factWords("Then warranty claims for 40 Dealers."), ["40", "Dealers"])
+  console.log("researcher self-check ok")
 }
