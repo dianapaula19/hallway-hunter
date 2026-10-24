@@ -12,6 +12,10 @@ const OK_CAPS = new Set(["a", "an", "the", "so", "and", "but", "i", "we", "our",
 export const speechSecs = (lines: { text: string }[]) => Math.round(lines.reduce((n, l) => n + l.text.split(/\s+/).filter(Boolean).length, 0) / 2.6)
 export const MAX_SECS = 80
 
+// Every cited line the letter prints besides the cards: size fact, the why and pilot lines, old "checked" sentences, questions.
+export const letterClaims = (letter?: PageLetter | null) =>
+  [letter?.scale, letter?.why, letter?.path, letter?.checked, ...(letter?.questions ?? [])].filter((c) => !!c)
+
 export const isConfidential = (lead: Lead | null) => !!lead && CONFIDENTIAL.test(`${lead.quote} ${lead.pain} ${lead.next_step}`)
 
 // Two+ consecutive capitalised words that appear nowhere in our evidence look like a personal name.
@@ -33,7 +37,7 @@ export function checkCompliance(input: {
   const { companyName, lead, sources, opps, lines, letter } = input
   const issues: string[] = []
   const corpus = [companyName, lead?.role ?? "", ...sources.flatMap((s) => [s.title, s.excerpt])].join(" ").toLowerCase()
-  const extra = [letter?.checked, letter?.scale, ...(letter?.questions ?? [])].filter((c) => !!c)
+  const extra = letterClaims(letter)
   const texts = [...opps.flatMap((o) => [o.title, o.claim.text]), ...lines.map((l) => l.text), ...extra.map((c) => c.text)]
 
   for (const t of texts) {

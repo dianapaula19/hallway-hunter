@@ -33,6 +33,8 @@ export async function skepticScore(
   // The size comes from a cited public fact when we have one; otherwise the skeptic is told it is unknown, not "200 people".
   const size = letter.scale ? ` (public fact: ${letter.scale.text})` : " (size unknown to you here; do not assume one)"
   const extras = [
+    letter.why ? `Why it matters (under card 1): ${letter.why.text}` : "",
+    letter.path ? `Pilot path (under card 1): ${letter.path.text}` : "",
     letter.checked ? `What we checked: ${letter.checked.text}` : "",
     letter.questions?.length ? `What we'd ask you:\n${letter.questions.map((q) => `- ${q.text}`).join("\n")}` : "",
   ].filter(Boolean).join("\n")

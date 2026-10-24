@@ -50,14 +50,16 @@ const savePage = (pageId: string, fields: Record<string, unknown>) => {
 // Starts the night path and returns at once; `done` settles when it finishes. A "night_path" run (subject = page id)
 // wraps the stages so /hq can show running / ok / error, and a crash is recorded there instead of escaping.
 // recipient: who the page is framed for ("COO", "CFO", or the role met); null keeps "Made for <Company>".
-export function startNightPath(companyId: string, leadId?: string | null, recipient?: string | null): { page_id: string; slug: string; done: Promise<{ page_id: string; slug: string }> } {
+// rewrites: skeptic-driven rewrites (default 1, the cron). "Run now" from /hq passes 0: someone is waiting, and a rewrite
+// costs ~9 s for 0-1 point on min(stop, read, reply) (PROCESS.md); the score shown is still the page's real one.
+export function startNightPath(companyId: string, leadId?: string | null, recipient?: string | null, rewrites = REWRITES): { page_id: string; slug: string; done: Promise<{ page_id: string; slug: string }> } {
   const ctx = loadContext(companyId, leadId)
   const pageId = uid("page")
   const slug = uid("p")
-  const letter: PageLetter = { recipient: recipient?.trim().slice(0, 60) || null, scale: null, checked: null, questions: [] }
+  const letter: PageLetter = { recipient: recipient?.trim().slice(0, 60) || null, scale: null, checked: null, why: null, path: null, questions: [] }
   insert("pages", { id: pageId, slug, company_id: companyId, lead_id: ctx.lead?.id ?? null, status: "draft", script: [], skeptic: [], letter, created_at: now() })
   const runId = startRun("night_path", pageId, "pipeline")
-  const done = build(ctx, pageId, slug, letter).then(
+  const done = build(ctx, pageId, slug, letter, rewrites).then(
     () => { endRun(runId, "ok", `/p/${slug}`); return { page_id: pageId, slug } },
     (e) => {
       const msg = e instanceof Error ? e.message : String(e)
@@ -77,7 +79,7 @@ export const runNightPath = (companyId: string, leadId?: string | null, recipien
 // 3.5 s on average) and on the two demo pages two rewrites moved min(stop, read, reply) 4 -> 5 and 4 -> 4 (PROCESS.md).
 const REWRITES = 1
 
-async function build(ctx: NightContext, pageId: string, slug: string, letter: PageLetter) {
+async function build(ctx: NightContext, pageId: string, slug: string, letter: PageLetter, rewrites: number) {
   const companyId = ctx.company.id
   const live = hasKey()
 
@@ -87,17 +89,18 @@ async function build(ctx: NightContext, pageId: string, slug: string, letter: Pa
   letter.scale = scaleSrc ? scaleClaim(scaleSrc, ctx.company.name) : null
   const withScale = scaleSrc ? loadContext(companyId, ctx.lead?.id) : ctx
 
-  // 1. research -> 1-3 cards, the "what we checked" line, and (no lead) the questions
-  const found = live ? await research(withScale, pageId) : { opportunities: offlineOpps(withScale, pageId), checked: null, questions: [] }
+  // 1. research -> 1-3 cards, card 1's company-level "why" and pilot "path" lines, and (no lead) the questions
+  const found = live ? await research(withScale, pageId) : { opportunities: offlineOpps(withScale, pageId), why: null, path: null, questions: [] }
   const opps = found.opportunities
-  letter.checked = found.checked
+  letter.why = found.why
+  letter.path = found.path
   letter.questions = found.questions
   opps.forEach((o, i) => insert("opportunities", { id: uid("opp"), page_id: pageId, title: o.title, claim: o.claim, formula: o.formula, position: i }))
   savePage(pageId, { letter })
   const fresh = loadContext(companyId, ctx.lead?.id) // researcher tools may have added sources
 
   // 2. script (sanitized and fitted inside), 3. skeptic loop (REWRITES rewrites, every round stored)
-  const extra = { recipient: letter.recipient, questions: letter.questions }
+  const extra = { recipient: letter.recipient, questions: letter.questions, why: letter.why, path: letter.path }
   let lines = live ? (await writeScript(fresh, pageId, opps, undefined, extra)).lines : offlineScript(fresh, pageId, opps)
   savePage(pageId, { script: lines })
   const rounds: SkepticScore[] = []
@@ -106,7 +109,7 @@ async function build(ctx: NightContext, pageId: string, slug: string, letter: Pa
       const { score } = await skepticScore(pageId, ctx.company.name, opps, lines, letter)
       rounds.push(score)
       savePage(pageId, { skeptic: rounds })
-      if (minScore(score) >= BAR || round >= REWRITES) break
+      if (minScore(score) >= BAR || round >= rewrites) break
       lines = (await writeScript(fresh, pageId, opps, { previous: lines, score }, extra)).lines
       savePage(pageId, { script: lines })
     }
