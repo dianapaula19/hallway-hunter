@@ -5,3 +5,21 @@ body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system
 main { max-width: 860px; margin: 0 auto; padding: 24px 16px; }
 a { color: var(--accent); }
 .muted { color: var(--muted); }
+
+/* The /p palette (see app/p/[slug]/page.module.css), shared by / and /capture. */
+.paper {
+  --paper: #f6f5f1; --card: #ffffff; --ink: #1d211f; --soft: #4a504c; --muted: #6f746f;
+  --line: #e3e1da; --accent: #22506e; --accent-soft: #e6eef3; --on-accent: #ffffff; --warn: #a3352a; --warn-soft: #f8e9e6;
+  --serif: "Iowan Old Style", "Charter", "Bitstream Charter", "Source Serif 4", "Source Serif Pro", Georgia, "DejaVu Serif", serif;
+  min-height: 100vh; background: var(--paper); color: var(--ink);
+  font: 17px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+@media (prefers-color-scheme: dark) {
+  .paper {
+    --paper: #131615; --card: #1a1e1c; --ink: #e9ebe8; --soft: #b9beba; --muted: #8e948f;
+    --line: #2a2f2c; --accent: #8fb8d4; --accent-soft: #1d2a33; --on-accent: #0f1418; --warn: #f0a196; --warn-soft: #2e1d1a;
+  }
+}
+.paper a { color: var(--accent); }
+.paper :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
