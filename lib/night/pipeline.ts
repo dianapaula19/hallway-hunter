@@ -20,7 +20,8 @@ function offlineOpps(ctx: NightContext, pageId: string): DraftOpportunity[] {
   const others = ctx.sources.filter((s) => s.kind !== "hallway")
   const raw: DraftOpportunity[] = []
   if (ctx.lead && hallway) raw.push({ title: `Take the ${ctx.lead.pain} off the team`, claim: { text: `A ${ctx.lead.role} described it in the hallway: ${ctx.lead.pain}.`, source_ids: [hallway.id] }, formula: normalizeFormula({ hours_per_week: 6, people: 3, input_source_ids: [hallway.id] }, known) })
-  for (const s of others.slice(0, 3 - raw.length)) raw.push({ title: s.title.slice(0, 60), claim: { text: `Signal worth a closer look: ${s.excerpt.split(/(?<=\.)\s/)[0].slice(0, 160)}`, source_ids: [s.id] }, formula: normalizeFormula({}, known) })
+  // Only the hallway card has real evidence of a manual task; a public signal stands in only when there is no lead.
+  if (!raw.length) for (const s of others.slice(0, 1)) raw.push({ title: s.title.slice(0, 60), claim: { text: `Signal worth a closer look: ${s.excerpt.split(/(?<=\.)\s/)[0].slice(0, 160)}`, source_ids: [s.id] }, formula: normalizeFormula({}, known) })
   const { kept } = sanitizeClaims(ctx.company.id, raw.map((o) => o.claim), runId)
   logStep(runId, "info", "offline", "no ANTHROPIC_API_KEY: template cards from the evidence store", raw.length)
   endRun(runId, "ok", `${kept.length} template cards`)

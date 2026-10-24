@@ -1,4 +1,4 @@
-// Researcher: evidence store (+ LIVE's site/TED fetchers) -> exactly 3 cited opportunities with euro formulas.
+// Researcher: evidence store (+ LIVE's site/TED fetchers) -> 1-3 cited opportunities with euro formulas (only cards with real evidence).
 import { all, get, knownSourceIds } from "../db.ts"
 import { runAgent, type Tool } from "../claude.ts"
 import type { Claim, Company, EuroFormula, Lead, Source } from "../types.ts"
@@ -57,17 +57,24 @@ const SCHEMA = {
 }
 
 const SYSTEM = `You are one of Velho's AI analysts preparing a private one-page draft for a Finnish company's CEO.
-Find exactly 3 concrete, unglamorous opportunities where software or AI could remove recurring manual work.
-Card 1 addresses the hallway pain, if there is one, using its concrete details (e.g. "every Friday afternoon" is about 4 h/week per person).
-Cards 2 and 3 each start from one specific public signal (a named tender, award or site fact) and name the recurring manual process it makes likely.
+Return 1 to 3 concrete, unglamorous opportunities where software or AI could remove recurring manual work. Fewer is better:
+one sharp card the CEO recognises beats three guesses. A card exists only if a cited source itself names the manual task.
+- Card 1 is the hallway pain, if there is one, using its concrete details (e.g. "every Friday afternoon" is about 4 h/week per person).
+- Add a card 2 or 3 only when a public source (a named tender, award or site page) explicitly describes a recurring process
+  (e.g. a multi-year maintenance framework, per-site reporting). A product sale, a single delivery or a generic site blurb is NOT
+  enough: do not infer paperwork from it. If in doubt, leave the card out.
 Rules:
 - Every claim cites source ids that exist in the evidence store (ids look like src_...). Never invent an id or a URL.
-- If evidence is thin, say "thin data" in the claim instead of padding.
+  If a public source genuinely corroborates the hallway card (e.g. their own site describes the service that task belongs to), cite it too.
+- Write claims as plain statements of what the source shows. No "likely", "points to", "thin data" or apologies.
 - Each opportunity gets a euro formula: hours_per_week x people x weeks_per_year x hourly_cost_eur x automation_share (0..1).
   Put a source id in input_source_ids only when that source actually supports one of the inputs; otherwise leave it empty (it becomes a sector estimate).
-  people is the team that does the task. If no source gives it, size it as one plausible team or pilot site for a company of this size and say "one team of N" in the claim.
+  hours_per_week is PER PERSON: if the source gives a team total ("two of us, three hours a day"), divide it (people 2, 7.5 h/week each).
+  If an input is assumed rather than stated, say so in the claim ("assuming four visits a week"), and say why the automation share ("a person still checks each order").
+  State hours both ways in the claim: per person and for the team ("7.5 h a week each, 15 h for the team").
+  people is the team that does the task. If no source gives it, use a small pilot team (2-5) and say "a pilot team of N" in the claim.
   Be conservative: Finnish loaded labour cost is typically 35-60 €/h, weeks_per_year about 46, automation_share rarely above 0.6.
-- No promises ("guarantee", "will save", "we will"). No personal names. Titles max 7 words, claims max 30 words, plain CEO English.
+- No promises ("guarantee", "will save", "we will"). No personal names. Titles max 7 words, claims max 40 words, plain CEO English.
 - Tools: search_sources reads the evidence store; ted_search and fetch_site add new public evidence (read-only). Use them sparingly.`
 
 export async function research(ctx: NightContext, pageId: string): Promise<{ runId: string; opportunities: DraftOpportunity[]; dropped: number }> {
@@ -104,7 +111,7 @@ export async function research(ctx: NightContext, pageId: string): Promise<{ run
   const lead = ctx.lead ? `Hallway lead (role: ${ctx.lead.role}): pain "${ctx.lead.pain}", quote "${ctx.lead.quote}".` : "No hallway lead."
   const r = await runAgent<{ opportunities: { title: string; claim: Claim; formula: Partial<EuroFormula> }[] }>({
     agent: "researcher", subjectId: pageId, system: SYSTEM, tools, maxToolCalls: 8, effort: "medium", schema: SCHEMA,
-    prompt: `Company: ${company.name}${company.business_id ? ` (Y-tunnus ${company.business_id})` : ""}\n${lead}\n\nEvidence store:\n${sourceList(ctx.sources) || "(empty)"}\n\nReturn exactly 3 opportunities.`,
+    prompt: `Company: ${company.name}${company.business_id ? ` (Y-tunnus ${company.business_id})` : ""}\n${lead}\n\nEvidence store:\n${sourceList(ctx.sources) || "(empty)"}\n\nReturn 1-3 opportunities, only those a cited source directly supports.`,
   })
 
   const raw = r.json?.opportunities ?? []

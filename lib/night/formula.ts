@@ -2,7 +2,7 @@
 import type { EuroFormula } from "../types.ts"
 
 export const FORMULA_INPUTS = [
-  { key: "hours_per_week", label: "hours / week", step: 0.5 },
+  { key: "hours_per_week", label: "hours / week each", step: 0.5 },
   { key: "people", label: "people", step: 1 },
   { key: "weeks_per_year", label: "weeks / year", step: 1 },
   { key: "hourly_cost_eur", label: "€ / hour", step: 1 },
