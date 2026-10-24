@@ -1,7 +1,6 @@
 // Shared Claude tool-loop runner. Owned by tech lead.
 // Every model turn and every tool call is logged to agent_runs / agent_steps (the /hq board reads them).
 import Anthropic from "@anthropic-ai/sdk"
-import { Anthropic as PostHogAnthropic } from "@posthog/ai/anthropic"
 import { randomUUID } from "node:crypto"
 import { PostHog } from "posthog-node"
 import type {
@@ -40,7 +39,6 @@ const posthogHost = process.env.NEXT_PUBLIC_POSTHOG_HOST
 const posthog = posthogKey && posthogHost
   ? new PostHog(posthogKey, {
       host: posthogHost,
-      privacyMode: true, // hallway notes and briefs never leave the app; PostHog gets timing, tokens and errors only
       enableExceptionAutocapture: true,
       flushAt: 1,
       flushInterval: 0,
@@ -50,11 +48,30 @@ const posthog = posthogKey && posthogHost
 let _client: Anthropic | undefined
 function client(): Anthropic {
   if (!hasKey()) throw new Error("ANTHROPIC_API_KEY is not set (expected in hackathon-04/.env)")
-  if (!posthog) {
-    // PostHog is optional: without its env vars the app runs and sends nothing.
-    return (_client ??= new Anthropic())
-  }
-  return (_client ??= new PostHogAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY!, posthog }) as unknown as Anthropic)
+  return (_client ??= new Anthropic())
+}
+
+// LLM analytics without content: @posthog/ai only wraps `messages`, not `beta.messages`, and passing its
+// posthog* fields through makes the API answer 400. So we send $ai_generation ourselves: model, tokens,
+// latency and errors only. Hallway notes, prompts and briefs never leave the app.
+function captureGeneration(p: { traceId: string; sessionId: string; agent: string; model: string; latencyMs: number; usage?: { input_tokens?: number; output_tokens?: number } | null; error?: string }) {
+  posthog?.capture({
+    distinctId: `ai-${p.sessionId}`,
+    event: "$ai_generation",
+    properties: {
+      $process_person_profile: false,
+      $ai_trace_id: p.traceId,
+      $ai_session_id: p.sessionId,
+      $ai_span_name: p.agent,
+      $ai_provider: "anthropic",
+      $ai_model: p.model,
+      $ai_latency: p.latencyMs / 1000,
+      $ai_input_tokens: p.usage?.input_tokens ?? 0,
+      $ai_output_tokens: p.usage?.output_tokens ?? 0,
+      $ai_is_error: Boolean(p.error),
+      ...(p.error ? { $ai_error: p.error.slice(0, 200) } : {}),
+    },
+  })
 }
 
 export interface Tool<I = Record<string, unknown>> {
@@ -129,11 +146,17 @@ export async function runAgent<T = unknown>(o: AgentOptions): Promise<AgentResul
           : {}),
         betas: ["server-side-fallback-2026-07-01"],
         fallbacks: "default" as const,
-        posthogTraceId: traceId,
-        posthogProperties: { $ai_session_id: sessionId },
       }
-      const res = await client().beta.messages.create(request, o.timeoutMs ? { timeout: o.timeoutMs, maxRetries: 1 } : undefined)
-      await posthog?.flush()
+      let res
+      try {
+        res = await client().beta.messages.create(request, o.timeoutMs ? { timeout: o.timeoutMs, maxRetries: 1 } : undefined)
+        captureGeneration({ traceId, sessionId, agent: o.agent, model: res.model, latencyMs: Date.now() - t0, usage: res.usage })
+      } catch (e) {
+        captureGeneration({ traceId, sessionId, agent: o.agent, model: MODEL, latencyMs: Date.now() - t0, error: e instanceof Error ? e.name : "Error" })
+        throw e
+      } finally {
+        await posthog?.flush().catch(() => {})
+      }
       const text = res.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("")
       const uses = res.content.filter((b): b is BetaToolUseBlock => b.type === "tool_use")
       logStep(runId, "model", "turn", { turn }, { stop_reason: res.stop_reason, text, tool_uses: uses.map((u) => ({ name: u.name, input: u.input })), usage: res.usage, model: res.model }, Date.now() - t0)
