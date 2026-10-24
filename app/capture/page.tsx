@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react"
 import posthog from "posthog-js"
 import type { Brief, Claim, Company, Lead, Source } from "@/lib/types"
+import { withBase } from "@/lib/base.ts"
 import s from "./capture.module.css"
 
 type Candidate = { business_id: string; name: string; line: string; registered: string; ceased: boolean }
@@ -21,7 +22,7 @@ async function shrink(file: File): Promise<Blob> {
 }
 
 async function post<T>(url: string, body: BodyInit, json = true): Promise<T> {
-  const r = await fetch(url, { method: "POST", body, ...(json ? { headers: { "content-type": "application/json" } } : {}) })
+  const r = await fetch(withBase(url), { method: "POST", body, ...(json ? { headers: { "content-type": "application/json" } } : {}) })
   return (await r.json()) as T
 }
 
@@ -49,7 +50,7 @@ export default function CapturePage() {
   useEffect(() => { if (company) void loadLeads(company.id) }, [company?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadLeads(id: string) {
-    const r = await fetch(`/api/lead?company_id=${encodeURIComponent(id)}`)
+    const r = await fetch(withBase(`/api/lead?company_id=${encodeURIComponent(id)}`))
     setLeads(((await r.json()) as { leads: Lead[] }).leads)
   }
 
@@ -127,7 +128,7 @@ export default function CapturePage() {
 
   async function del(id: string) {
     if (!confirm("Delete this lead and its hallway quote?")) return
-    const r = await fetch(`/api/lead/${encodeURIComponent(id)}`, { method: "DELETE" })
+    const r = await fetch(withBase(`/api/lead/${encodeURIComponent(id)}`), { method: "DELETE" })
     if (r.ok && process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) posthog.capture("lead_deleted")
     if (company) await loadLeads(company.id)
   }

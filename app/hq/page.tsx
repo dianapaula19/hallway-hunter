@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react"
 import posthog from "posthog-js"
 import type { AgentRun, Approval, OutboxDraft, SkepticScore } from "@/lib/types.ts"
+import { withBase } from "@/lib/base.ts"
 import s from "./hq.module.css"
 
 type Step = { seq: number; kind: string; name: string; ms: number; input: string | null; output: string | null }
@@ -30,7 +31,7 @@ export default function HQ() {
     let alive = true
     const tick = async () => {
       try {
-        const r = await fetch("/api/hq", { cache: "no-store" })
+        const r = await fetch(withBase("/api/hq"), { cache: "no-store" })
         if (alive) { setB(await r.json()); setErr("") }
       } catch (e) { if (alive) setErr(String(e)) }
     }
@@ -43,7 +44,7 @@ export default function HQ() {
     const co = company || b?.companies[0]?.id
     if (!co) return
     setBusy("night"); setMsg("Night path running… watch the runs below.")
-    const r = await fetch("/api/night", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ company_id: co, lead_id: lead || undefined }) })
+    const r = await fetch(withBase("/api/night"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ company_id: co, lead_id: lead || undefined }) })
     const j = await r.json()
     if (r.ok && process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) {
       posthog.capture("night_path_completed", { has_selected_lead: Boolean(lead) })
@@ -118,7 +119,7 @@ export default function HQ() {
           <ul className={s.list}>
             {b?.pages.map((p) => (
               <li key={p.id}>
-                <a href={`/p/${p.slug}`} target="_blank" rel="noreferrer">{p.company}</a> <span className={`${s.badge} ${s[`p_${p.status}`]}`}>{p.status}</span>
+                <a href={withBase(`/p/${p.slug}`)} target="_blank" rel="noreferrer">{p.company}</a> <span className={`${s.badge} ${s[`p_${p.status}`]}`}>{p.status}</span>
               </li>
             ))}
           </ul>
@@ -153,7 +154,7 @@ function ApprovalCard({ a }: { a: Board["approvals"][number] }) {
   const last = rounds.at(-1)
 
   const act = async (action: "approve" | "edit" | "kill") => {
-    const r = await fetch(`/api/approvals/${a.id}`, {
+    const r = await fetch(withBase(`/api/approvals/${a.id}`), {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ action, note, final_payload: action === "edit" ? { subject, body } : undefined }),
     })
@@ -168,7 +169,7 @@ function ApprovalCard({ a }: { a: Board["approvals"][number] }) {
     <article className={s.appr}>
       <div className={s.apprHead}>
         <strong>{a.payload.subject}</strong>
-        <a href={`/p/${a.payload.page_slug}`} target="_blank" rel="noreferrer">Open page ↗</a>
+        <a href={withBase(`/p/${a.payload.page_slug}`)} target="_blank" rel="noreferrer">Open page ↗</a>
       </div>
       <div className={s.gates}>
         <span className={blocked ? s.warn : s.ok}>{blocked ? `Compliance: ${a.compliance!.issues.length} issue(s)` : "Compliance ok"}</span>
