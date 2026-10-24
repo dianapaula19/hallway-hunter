@@ -3,9 +3,15 @@ import { after } from "next/server"
 import { loggerProvider, posthogLogsLogger } from "@/instrumentation"
 import { loadCompany, parseCompany, type PrhCompany } from "@/lib/live/prh.ts"
 import { quickScout } from "@/lib/live/scout.ts"
+import { latestBrief } from "@/lib/live/brief.ts"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
+
+// GET -> the newest stored (non-thin) brief, shown on /capture before the first lookup. No model call.
+export function GET() {
+  return Response.json({ example: latestBrief() })
+}
 
 // POST {business_id} -> company row + Quick Scout brief. A ceased company returns no brief, just the fact.
 export async function POST(req: Request) {

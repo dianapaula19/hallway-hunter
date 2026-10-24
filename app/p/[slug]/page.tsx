@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
-import { all, get, OWN_INBOX } from "@/lib/db.ts"
+import { all, get } from "@/lib/db.ts"
 import { isConfidential } from "@/lib/night/compliance.ts"
 import type { Company, Lead, Opportunity, Page, Source } from "@/lib/types.ts"
 import { Chips, FormulaRow, Player } from "./client.tsx"
@@ -63,7 +63,9 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
   // We store no event name, only when the lead was captured.
   const met = lead ? `Met in a conference hallway, ${day(lead.created_at)}` : null
   // Reply yes opens the viewer's own mail app, addressed to our inbox. The app sends nothing (CLAUDE.md rule 1).
-  const yes = `mailto:${OWN_INBOX}?subject=${encodeURIComponent(`Yes: the one-page teardown for ${name}`)}&body=${encodeURIComponent(`Yes, please send the teardown.\n\n(Velho draft ${slug})`)}`
+  // No real inbox configured (the db.ts fallback is a localhost address): say what the button does instead of linking it.
+  const inbox = process.env.HH_OWN_INBOX
+  const yes = inbox && `mailto:${inbox}?subject=${encodeURIComponent(`Yes: the one-page teardown for ${name}`)}&body=${encodeURIComponent(`Yes, please send the teardown.\n\n(Velho draft ${slug})`)}`
 
   return (
     <div className="paper"><div className={s.desk}>
@@ -108,8 +110,10 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
             <p className={s.askText}>{fiText(ask.text.slice(0, q))}</p>
             {ask.text.slice(q).trim() && <p className={s.askTerms}>{fiText(ask.text.slice(q).trim())}</p>}
             <p className={s.yesRow}>
-              <a className={s.yes} href={yes}>Reply yes</a>
-              <span className={s.yesNote}>Opens your own email app, addressed to Velho. Nothing is sent until you press send.</span>
+              {yes ? <>
+                <a className={s.yes} href={yes}>Reply yes</a>
+                <span className={s.yesNote}>Opens your own email app, addressed to Velho. Nothing is sent until you press send.</span>
+              </> : <span className={s.yesNote}>In use, a &ldquo;Reply yes&rdquo; button here opens a reply to your Velho consultant in your own email app. Nothing is sent from this page.</span>}
             </p>
           </section>
         )}

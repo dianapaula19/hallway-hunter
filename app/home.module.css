@@ -3,6 +3,8 @@
 
 .top { display: flex; align-items: center; gap: 14px; padding-bottom: 16px; border-bottom: 1px solid var(--line); margin-bottom: 56px; }
 
+.heroRow { display: grid; gap: 40px; align-items: start; }
+@media (min-width: 1024px) { .heroRow { grid-template-columns: minmax(0, 1fr) 400px; gap: 56px; } }
 .hero { max-width: 720px; }
 .h1 { font: 500 clamp(30px, 4.6vw, 44px)/1.12 var(--serif); letter-spacing: -.012em; margin: 0; text-wrap: balance; }
 .lede { font-size: 17px; line-height: 1.6; color: var(--soft); margin: 18px 0 0; max-width: 600px; text-wrap: pretty; }
@@ -57,8 +59,10 @@
 .miniH1 > span { display: block; }
 .nowrap { white-space: nowrap; }
 .miniQuote { margin-top: 4px; padding-left: 10px; border-left: 2px solid var(--accent); font: italic 13px/1.45 var(--serif); color: var(--soft); }
-.miniCalc { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 6px; padding: 8px; border-radius: 6px; background: var(--paper); }
-.miniCalc i { height: 12px; border-radius: 3px; background: var(--card); border: 1px solid var(--line); }
+.miniCalc { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 0; margin-top: 6px; padding: 7px 9px; border-radius: 6px; background: var(--paper); font-size: 11px; color: var(--soft); font-variant-numeric: tabular-nums; }
+.miniCalc b { font-weight: 600; color: var(--ink); padding: 1px 4px; border: 1px solid var(--line); border-radius: 3px; background: var(--card); }
+.miniCalc .op { padding: 0 4px; color: var(--muted); }
+.miniTag { margin-left: 4px; font-size: 9px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .miniYes { align-self: flex-start; margin-top: 4px; padding: 5px 10px; border-radius: 4px; background: var(--accent); color: var(--on-accent); font-size: 10px; font-weight: 600; }
 
 /* latest drafts: a compact list, not a card grid */

@@ -75,6 +75,17 @@ export default function HQ() {
     setJob(null); setBusy("")
   }, [job, jobRun, lead])
 
+  // Withdrawn pages stay reachable but fold away; the list leads with what is live.
+  const live = b?.pages.filter((p) => p.status !== "killed") ?? []
+  const withdrawn = b?.pages.filter((p) => p.status === "killed") ?? []
+  const pageItem = (p: Board["pages"][number]) => (
+    <li key={p.id}>
+      <a href={withBase(`/p/${p.slug}`)} {...newTab}>{p.company}</a>
+      <span className={s.status} data-s={p.status}>{PAGE_STATUS[p.status] ?? p.status}</span>
+      <span className={s.time}>{when(p.created_at)}</span>
+    </li>
+  )
+
   const leads = b?.leads.filter((l) => l.company_id === (company || b?.companies[0]?.id)) ?? []
 
   // One group per company: the newest draft up front, older versions behind "N earlier versions" (approvals come newest first).
@@ -105,7 +116,7 @@ export default function HQ() {
               {older.length > 0 && (
                 <details className={s.older}>
                   <summary>{older.length} earlier {older.length === 1 ? "version" : "versions"}</summary>
-                  {older.map((a) => <ApprovalCard key={a.id} a={a} />)}
+                  {older.map((a) => <ApprovalCard key={a.id} a={a} older />)}
                 </details>
               )}
             </article>
@@ -115,7 +126,8 @@ export default function HQ() {
         <aside className={s.side}>
           <section className={s.card}>
             <h2 className={s.h2}>Run the night path now</h2>
-            <p className={s.muted}>Research, audio script and checks for one company. Takes 25-40 s.</p>
+            <p className={s.muted}>Research, audio script and checks for one company with a hallway note. Takes 25-40 s.</p>
+            {b && !b.companies.length && <p className={s.muted}>No hallway notes yet. Save a voice note on /capture first.</p>}
             <div className={s.form}>
               <select className={s.field} value={company} disabled={!!busy} aria-label="Company" onChange={(e) => { setCompany(e.target.value); setLead("") }}>
                 {b?.companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -131,15 +143,13 @@ export default function HQ() {
 
           <section className={s.card}>
             <h2 className={s.h2}>Pages</h2>
-            <ul className={s.list}>
-              {b?.pages.map((p) => (
-                <li key={p.id}>
-                  <a href={withBase(`/p/${p.slug}`)} {...newTab}>{p.company}</a>
-                  <span className={s.status} data-s={p.status}>{PAGE_STATUS[p.status] ?? p.status}</span>
-                  <span className={s.time}>{when(p.created_at)}</span>
-                </li>
-              ))}
-            </ul>
+            <ul className={s.list}>{live.map(pageItem)}</ul>
+            {withdrawn.length > 0 && (
+              <details className={s.older}>
+                <summary>Show {withdrawn.length} withdrawn</summary>
+                <ul className={s.list}>{withdrawn.map(pageItem)}</ul>
+              </details>
+            )}
           </section>
 
           <section className={s.card}>
@@ -195,7 +205,11 @@ export default function HQ() {
   )
 }
 
-function ApprovalCard({ a }: { a: Board["approvals"][number] }) {
+// The reader test in words: the three scores, then the first point of its notes.
+const firstNote = (notes: string) => notes.replace(/^\s*1[).]\s*/, "").split(/(?<=[.;!?])\s+|\s+2[).]\s/)[0].replace(/[;,:]$/, ".")
+
+// An older version can only be killed: approving it would ship a draft that a newer one replaced.
+function ApprovalCard({ a, older = false }: { a: Board["approvals"][number]; older?: boolean }) {
   const [mode, setMode] = useState<"" | "edit" | "kill">("")
   const [subject, setSubject] = useState(a.payload.subject)
   const [body, setBody] = useState(a.payload.body)
@@ -233,9 +247,17 @@ function ApprovalCard({ a }: { a: Board["approvals"][number] }) {
       </p>
       {blocked && <p className={s.hold}>On hold until the compliance check is clear: {a.compliance!.issues.join("; ")}.</p>}
 
+      {last && (
+        <p className={s.reader}>
+          <span className={s.readerScores} data-low={low != null && low < 7 ? "" : undefined}>
+            Reader test: {`stop\u00a0${last.stop} · read\u00a0${last.read} · reply\u00a0${last.reply}`}<span className={s.time}> /10, aim 7+</span>
+          </span>
+          {last.notes && <span className={s.readerNote}>{firstNote(last.notes)}</span>}
+        </p>
+      )}
       <details className={s.checks}>
         <summary>Quality checks <span className={s.time}>
-          {` · compliance ${blocked ? `${a.compliance!.issues.length} to look at` : a.compliance ? "clear" : "not run"} · reader test ${low == null ? "not run" : `${low}/10`}`}
+          {` · compliance ${blocked ? `${a.compliance!.issues.length} to look at` : a.compliance ? "clear" : "not run"}`}
         </span></summary>
         <dl className={s.dl}>
           <dt>Compliance</dt>
@@ -259,9 +281,9 @@ function ApprovalCard({ a }: { a: Board["approvals"][number] }) {
       {out ? <p className={s.note} role="status">{out}</p> : (
         <div className={s.actions}>
           {mode === "" && <>
-            <button className={s.primary} disabled={blocked || sending} title={blocked ? "On hold: see the compliance check" : ""} onClick={() => act("approve")}>Approve</button>
-            <button className={s.secondary} disabled={blocked} onClick={() => setMode("edit")}>Edit</button>
-            <button className={s.textBtn} onClick={() => setMode("kill")}>Kill…</button>
+            {!older && <button className={s.primary} disabled={blocked || sending} title={blocked ? "On hold: see the compliance check" : ""} onClick={() => act("approve")}>Approve</button>}
+            {!older && <button className={s.secondary} disabled={blocked} onClick={() => setMode("edit")}>Edit</button>}
+            <button className={s.textBtn} onClick={() => setMode("kill")}>{older ? "Kill this older version…" : "Kill…"}</button>
           </>}
           {mode === "edit" && <><button className={s.primary} disabled={blocked || sending} onClick={() => act("edit")}>Save and approve</button><button className={s.textBtn} onClick={cancel}>Cancel</button></>}
           {mode === "kill" && <><button className={s.danger} disabled={!note.trim() || sending} onClick={() => act("kill")}>Kill this draft</button><button className={s.textBtn} onClick={cancel}>Cancel</button></>}

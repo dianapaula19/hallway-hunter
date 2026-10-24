@@ -1,0 +1,33 @@
+/* A stored brief, shown as the live half of the product on / and /capture. Same chips and popovers as /p. */
+.card {
+  display: grid; gap: 8px; padding: 20px 22px; border: 1px solid var(--line); border-radius: var(--radius-lg, 14px);
+  background: var(--card); color: var(--ink); font-size: 15px; line-height: 1.5; min-width: 0;
+}
+.card p, .card ul { margin: 0; overflow-wrap: anywhere; }
+.label { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; color: var(--accent); }
+.name { margin: 0; font: 600 22px/1.25 var(--font-serif, var(--serif)); }
+.meta { font-size: 13px; color: var(--muted); }
+.what { margin-top: 4px !important; }
+.h3 { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; color: var(--muted); margin: 8px 0 0; }
+.list { padding-left: 18px; display: grid; gap: 4px; }
+.opener { font: italic 16px/1.45 var(--font-serif, var(--serif)); }
+.obj { color: var(--soft); }
+
+.chips { display: inline-flex; gap: 3px; vertical-align: 2px; margin-left: 2px; }
+.chip {
+  position: relative; font: inherit; font-size: 11px; font-weight: 600; line-height: 1; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9px; border: 1px solid var(--line); background: var(--card); color: var(--accent); cursor: pointer;
+}
+.chip::after { content: ""; position: absolute; inset: -13px -8px; } /* 44 px hit area */
+.chip:hover, .chip:focus-visible { border-color: var(--accent); outline: none; }
+.pop {
+  max-width: min(460px, calc(100vw - 32px)); border: 1px solid var(--line); border-radius: 14px;
+  padding: 22px 22px 18px; background: var(--card); color: var(--ink); box-shadow: 0 20px 60px rgb(0 0 0 / .18);
+}
+.pop::backdrop { background: rgb(10 14 12 / .25); }
+.pop p { margin: 0; }
+.popKind { font-size: 12px; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
+.popTitle { font-weight: 600; margin-top: 6px !important; }
+.popExcerpt { margin-top: 10px !important; color: var(--soft); font-size: 15px; }
+.popUrl { display: block; margin-top: 12px; font-size: 13px; color: var(--accent); word-break: break-all; }
+.popClose { margin-top: 16px; font: inherit; font-size: 13px; background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0; }

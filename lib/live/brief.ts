@@ -1,5 +1,5 @@
 // Brief post-processing: citation sanitizer -> thin-data flag -> 120-word fit -> store.
-import { insert, now, uid } from "../db.ts"
+import { all, get, insert, now, uid } from "../db.ts"
 import { sanitizeClaims } from "../night/sanitize.ts"
 import type { Brief, BriefRow, Claim, Company, Source } from "../types.ts"
 
@@ -82,4 +82,24 @@ export function evidenceBrief(company: Company, prh: Source, others: Source[]): 
       : { text: "thin data: no sourced objection", source_ids: [] },
     thin_data: signals.length < 2,
   })
+}
+
+export type LatestBrief = { name: string; created_at: string; secs: number | null; word_count: number; brief: Brief; sources: Source[] }
+
+// The newest stored brief that is not thin data, with only the sources it cites (same company), for the
+// "this is what the live half looks like" card on / and /capture. Read-only; nothing is generated.
+export function latestBrief(): LatestBrief | null {
+  const row = get<BriefRow & { name: string; started_at: string | null; ended_at: string | null }>(
+    `SELECT b.*, c.name, r.started_at, r.ended_at FROM briefs b JOIN companies c ON c.id = b.company_id
+       LEFT JOIN agent_runs r ON r.id = b.run_id AND r.status = 'ok'
+      WHERE json_extract(b.brief, '$.thin_data') = 0 ORDER BY b.created_at DESC LIMIT 1`)
+  if (!row) return null
+  const b = row.brief
+  const ids = [...new Set([b.what_they_do, ...b.signals, b.objection].flatMap((c) => c.source_ids))]
+  const found = ids.length ? all<Source>(`SELECT * FROM sources WHERE company_id = ? AND id IN (${ids.map(() => "?").join(",")})`, row.company_id, ...ids) : []
+  return {
+    name: row.name, created_at: row.created_at, word_count: row.word_count, brief: b,
+    secs: row.started_at && row.ended_at ? (Date.parse(row.ended_at) - Date.parse(row.started_at)) / 1000 : null,
+    sources: ids.map((id) => found.find((s) => s.id === id)).filter((s): s is Source => !!s),
+  }
 }

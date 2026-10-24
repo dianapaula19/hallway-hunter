@@ -2,7 +2,10 @@ import Link from "next/link"
 import { all, get } from "@/lib/db.ts"
 import { isConfidential } from "@/lib/night/compliance.ts"
 import type { Lead, Opportunity, PageStatus } from "@/lib/types.ts"
-import { headline } from "./p/[slug]/letter.ts"
+import { latestBrief } from "@/lib/live/brief.ts"
+import { FORMULA_INPUTS } from "@/lib/night/formula.ts"
+import { fi, headline } from "./p/[slug]/letter.ts"
+import { BriefCard } from "./brief-card"
 import s from "./home.module.css"
 import { Wordmark } from "./wordmark"
 
@@ -31,6 +34,7 @@ function sample() {
     role: lead?.role ?? null,
     quote: lead && !isConfidential(lead) ? lead.quote : null,
     head: headline(top),
+    formula: top?.formula ?? null,
   }
 }
 
@@ -49,6 +53,7 @@ const when = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "
 export default function Home() {
   const pages = latest()
   const ex = sample()
+  const brief = latestBrief()
   return (
     <div className="paper">
       <main className={s.wrap}>
@@ -57,6 +62,7 @@ export default function Home() {
           <Wordmark product="Hallway Hunter" />
         </header>
 
+        <div className={s.heroRow}>
         <section className={s.hero}>
           <h1 className={s.h1}>From a badge in the hallway to a page made for their company, by the next morning.</h1>
           <p className={s.lede}>
@@ -64,6 +70,8 @@ export default function Home() {
           </p>
           <Link href="/capture" className={s.cta}>Try it on any Finnish company <span aria-hidden>→</span></Link>
         </section>
+        {brief && <BriefCard ex={brief} label="Live · the latest brief" />}
+        </div>
 
         {ex && (
           <figure className={s.artefact}>
@@ -88,7 +96,14 @@ export default function Home() {
                   {ex.head ? <><span>{ex.head.hours} hours a week by hand.</span> <span>About <span className={s.nowrap}>{ex.head.eur} a year</span> to win back.</span></> : <>A first look at {ex.name}</>}
                 </span>
                 {ex.quote && <span className={s.miniQuote}>“{ex.quote}”</span>}
-                <span className={s.miniCalc} aria-hidden><i /><i /><i /><i /><i /></span>
+                {ex.formula && (
+                  <span className={s.miniCalc} aria-label="The estimate's formula, editable on the page">
+                    {FORMULA_INPUTS.map((inp, i) => (
+                      <span key={inp.key}>{i > 0 && <span className={s.op}>×</span>}<b>{inp.key === "automation_share" ? `${fi(Math.round(ex.formula![inp.key] * 100))} %` : inp.key === "hourly_cost_eur" ? `€${fi(ex.formula![inp.key])}` : fi(ex.formula![inp.key])}</b></span>
+                    ))}
+                    <span><span className={s.op}>=</span><b>{ex.head?.eur}</b> <span className={s.miniTag}>{ex.formula.label}</span></span>
+                  </span>
+                )}
                 <span className={s.miniYes}>Reply yes</span>
               </Link>
               <p className={s.caption}><strong>Next morning.</strong> Their words, the cost worked out and editable, one question. A person at Velho approves it first.</p>
