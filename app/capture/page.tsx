@@ -4,6 +4,8 @@ import { Wordmark } from "../wordmark"
 import posthog from "posthog-js"
 import type { Brief, Claim, Company, Lead, Source } from "@/lib/types"
 import { withBase } from "@/lib/base.ts"
+import type { LatestBrief } from "@/lib/live/brief.ts"
+import { BriefCard } from "../brief-card"
 import s from "./capture.module.css"
 
 type Candidate = { business_id: string; name: string; line: string; registered: string; ceased: boolean }
@@ -62,6 +64,9 @@ export default function CapturePage() {
   const ctl = useRef<AbortController | null>(null)
   const fresh = () => { ctl.current?.abort(); ctl.current = new AbortController(); return ctl.current.signal }
   useEffect(() => () => ctl.current?.abort(), [])
+  // A real stored brief fills the empty column until the first lookup, so the result is visible before anyone types.
+  const [example, setExample] = useState<LatestBrief | null>(null)
+  useEffect(() => { fetch(withBase("/api/scout")).then((r) => r.json()).then((j) => setExample(j.example ?? null)).catch(() => {}) }, [])
 
   useEffect(() => { if (!busy) return; const i = setInterval(() => setTick(Date.now()), 250); return () => clearInterval(i) }, [busy])
   const company = scout?.company ?? null
@@ -244,6 +249,7 @@ export default function CapturePage() {
               </ol>
             </section>
           )}
+          {idle && example && <BriefCard ex={example} label="Example · the latest brief" />}
 
           {busy?.startsWith("Researching") && !b && (
             <section className={s.card} aria-hidden>
