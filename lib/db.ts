@@ -129,8 +129,17 @@ CREATE TABLE IF NOT EXISTS outbox (
 // Columns stored as JSON text. get/all parse them; run/insert stringify objects.
 const JSON_COLS = new Set([
   "prh", "brief", "script", "skeptic", "compliance", "claim", "formula",
-  "input", "output", "payload", "final_payload",
+  "input", "output", "payload", "final_payload", "letter",
 ])
+
+// Additive columns for databases created before them. [table, column, definition, backfill run once when added]
+const MIGRATIONS: [string, string, string, string?][] = [
+  // 1 = a demo note, invented for a demo, shown with a "nobody at <company> said this" label.
+  // Every lead stored before this column existed came from seed, test scripts or rehearsals, so the backfill marks them all.
+  ["leads", "synthetic", "INTEGER NOT NULL DEFAULT 0", "UPDATE leads SET synthetic = 1"],
+  // JSON PageLetter: recipient, what we checked, scale fact, questions (lib/types.ts).
+  ["pages", "letter", "TEXT"],
+]
 
 const g = globalThis as unknown as { __hhdb?: DatabaseSync }
 
@@ -139,6 +148,11 @@ export function db(): DatabaseSync {
     mkdirSync(DB_PATH.slice(0, DB_PATH.lastIndexOf("/") + 1) || ".", { recursive: true })
     const d = new DatabaseSync(DB_PATH)
     d.exec(SCHEMA)
+    for (const [table, col, def, backfill] of MIGRATIONS) {
+      if ((d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === col)) continue
+      d.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`)
+      if (backfill) d.exec(backfill)
+    }
     g.__hhdb = d
   }
   return g.__hhdb

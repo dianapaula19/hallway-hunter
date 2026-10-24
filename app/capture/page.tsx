@@ -54,6 +54,8 @@ export default function CapturePage() {
   const [lang, setLang] = useState<"fi-FI" | "en-US">("en-US")
   const [listening, setListening] = useState(false)
   const [transcript, setTranscript] = useState("")
+  // On by default: at a demo the note is made up on the spot about a real company, and the page must say so.
+  const [demoNote, setDemoNote] = useState(true)
   const [leads, setLeads] = useState<Lead[]>([])
   const [noteMsg, setNoteMsg] = useState<string | null>(null)
   const rec = useRef<SR | null>(null)
@@ -140,7 +142,7 @@ export default function CapturePage() {
     if (!company || !transcript.trim()) return
     setBusy("Saving lead (names scrubbed)…")
     try {
-      const r = await post<{ lead?: Lead; error?: string }>("/api/lead", JSON.stringify({ company_id: company.id, transcript }))
+      const r = await post<{ lead?: Lead; error?: string }>("/api/lead", JSON.stringify({ company_id: company.id, transcript, synthetic: demoNote }))
       if (r.error) setNoteMsg(r.error); else {
         if (process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) posthog.capture("lead_saved")
         setTranscript(""); setNoteMsg(null); await loadLeads(company.id)
@@ -303,13 +305,17 @@ export default function CapturePage() {
               </div>
               {noteMsg && <p className={s.error} role="alert">{noteMsg}</p>}
               <textarea className={s.input} value={transcript} onChange={(e) => setTranscript(e.target.value)} rows={4} placeholder="Transcript appears here. Edit before saving." aria-label="Voice note transcript" />
+              <label className={s.demoNote}>
+                <input type="checkbox" checked={demoNote} onChange={(e) => setDemoNote(e.target.checked)} />
+                <span>Demo note: invented for a demo, and labelled that way on every page. Untick only for a real conversation.</span>
+              </label>
               <button className={s.primary} disabled={!!busy || !transcript.trim()} onClick={saveLead}>Save lead</button>
               {leads.length > 0 && (
                 <ul className={s.leads}>
                   {leads.map((l) => (
                     <li key={l.id}>
                       <div>
-                        <p className={s.leadRole}>{l.role} <span className={s.tag}>{l.temperature}</span></p>
+                        <p className={s.leadRole}>{l.role} <span className={s.tag}>{l.temperature}</span>{l.synthetic ? <span className={s.tag}>demo note</span> : null}</p>
                         <blockquote className={s.quote}>&ldquo;{l.quote}&rdquo;</blockquote>
                         <p className={s.meta}>{l.pain}{l.next_step && ` → ${l.next_step}`}</p>
                       </div>

@@ -10,7 +10,7 @@ if (get("SELECT id FROM companies WHERE id = ?", id)) {
   insert("leads", {
     id: "lead_demo", company_id: id, role: "Head of Finance",
     quote: "We still re-key every carrier invoice by hand, three of us, every Monday.",
-    pain: "manual invoice re-keying", next_step: "send a one-page draft", temperature: "warm", created_at: now(),
+    pain: "manual invoice re-keying", next_step: "send a one-page draft", temperature: "warm", synthetic: 1, created_at: now(),
   })
   addSource({ company_id: id, kind: "hallway", title: "Hallway note, Head of Finance", excerpt: "We still re-key every carrier invoice by hand, three of us, every Monday.", lead_id: "lead_demo" })
   addSource({ company_id: id, kind: "note", title: "Synthetic registry profile", excerpt: "Freight forwarding, 120 employees, registered 2004 (synthetic test data)." })
