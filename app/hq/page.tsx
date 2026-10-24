@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react"
 import posthog from "posthog-js"
 import type { AgentRun, Approval, OutboxDraft, SkepticScore } from "@/lib/types.ts"
-import { withBase } from "@/lib/base.ts"
+import { withBase, newTab } from "@/lib/base.ts"
 import s from "./hq.module.css"
 
 type Step = { seq: number; kind: string; name: string; ms: number; input: string | null; output: string | null }
@@ -134,7 +134,7 @@ export default function HQ() {
           <ul className={s.list}>
             {b?.pages.map((p) => (
               <li key={p.id}>
-                <a href={withBase(`/p/${p.slug}`)} target="_blank" rel="noreferrer">{p.company}</a> <span className={`${s.badge} ${s[`p_${p.status}`]}`}>{p.status}</span>
+                <a href={withBase(`/p/${p.slug}`)} {...newTab}>{p.company}</a> <span className={`${s.badge} ${s[`p_${p.status}`]}`}>{p.status}</span>
               </li>
             ))}
           </ul>
@@ -191,7 +191,7 @@ function ApprovalCard({ a }: { a: Board["approvals"][number] }) {
     <article className={s.appr}>
       <div className={s.apprHead}>
         <strong>{a.payload.subject}</strong>
-        <a href={withBase(`/p/${a.payload.page_slug}`)} target="_blank" rel="noreferrer">Open page ↗</a>
+        <a href={withBase(`/p/${a.payload.page_slug}`)} {...newTab}>Open page ↗</a>
       </div>
       <div className={s.gates}>
         <span className={blocked ? s.warn : s.ok}>{blocked ? `Compliance: ${a.compliance!.issues.length} issue(s)` : "Compliance ok"}</span>
