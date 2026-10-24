@@ -195,6 +195,28 @@ Append-only, timestamped (Europe/Helsinki). Each entry covers: what we **asked**
   - Checked: `node app/p/[slug]/letter.ts` self-check, typecheck, check, build. Headless Chrome at 1440x900 and 390x844, light and dark, no horizontal overflow; typed 10 and 7.5 into the calculator (€24 800, then back to €18 600, field reformatted to 7,5).
   - Left: the H1 figure is computed on the server at the page's own inputs, so it does not follow edits in the calculator below (the calculator's result does). The duplicate Konecranes drafts and /hq are the other lane's.
 
+- **2026-10-24, judge gaps, brand lane (branch h3-brand).**
+  - Judges said:
+    - /hq opened on an old error: the Konecranes draft was still held for "Luka Koper's RTG", which PROCESS said was fixed. The run selector offered companies with nothing to run on (Fiskars Brands Fininvest, Erilava), 6 killed pages sat in the list, and the reader test showed only "4/10".
+    - The live half (the cited brief) appeared nowhere until someone typed a company. /capture on desktop was a short form with empty space under it.
+    - The calculator in the landing artefact was five blank boxes.
+    - "Reply yes" opened a mail to `hallway-hunter-team@localhost`.
+  - Root cause of the hold: the check *was* fixed (the compliance self-check covers "Luka Koper's RTG"), but each page stores the compliance result from the night it was written, and nothing re-ran it.
+  - Changed:
+    - `scripts/recheck-compliance.ts`: re-runs today's deterministic `checkCompliance` on every draft still waiting, with the same inputs as the pipeline (`loadContext`, the stored cards and script). It writes the new result, updates the "Compliance" line of the approval body so the draft email is not stale, and logs a `compliance` run so /hq shows it. No model, no network, never approves. `--dry` previews. On this lane's DB copy: Konecranes 1 issue → clear, Valmet and Ponsse unchanged; a second run changes nothing. I read the Konecranes cards and script before clearing: "Luka Koper" is the Port of Koper's company (a TED buyer), no person is named. Not run against the main checkout's DB.
+    - /hq: withdrawn pages fold behind "Show 6 withdrawn". The run selector lists only companies with a saved hallway lead (`/api/hq`), because the night script opens on the hallway quote. With no leads it says to save a voice note first. Each draft shows "Reader test: stop 6 · read 7 · reply 4 /10, aim 7+" and the first point of the reader's notes, without a click. Older versions of a draft show only Kill, because approving one would ship a replaced draft.
+    - `app/brief-card.tsx`: the newest stored brief that is not thin data (`latestBrief()` in `lib/live/brief.ts`, read-only), with company, "by Velho's AI analysts", word count, research time from its `quick_scout` run (3.6 s), Helsinki timestamp, and numbered source chips that open the excerpt and url in a native popover (same as /p). It shows what they do, both signals, the first opener and the objection, and says "shortened here". It sits beside the hero on / ("Live · the latest brief") and under "What happens" on /capture while idle ("Example · the latest brief", from a new `GET /api/scout`).
+    - Landing artefact: the mini calculator shows the page's real inputs, "7,5 × 2 × 46 × €45 × 60 % = €18 600 estimate", from the top card's stored formula.
+    - /p: "Reply yes" links only when `HH_OWN_INBOX` is set. Unset, the page shows one line instead: in use, a Reply yes button opens a reply to your Velho consultant in your own email app. The `lib/db.ts` fallback is unchanged (the outbox still needs it).
+  - Checked: typecheck, check, build, the compliance and letter self-checks. Headless Chrome at 1440x900 and 390x844 on /, /capture, /hq and /p: no horizontal overflow. A chip on / opens its TED popover. "Show 6 withdrawn" opens 6 rows. The selector lists Valmet, Konecranes, Ponsse and the synthetic demo company. `next start` with `HH_OWN_INBOX=demo-team@example.org` renders that mailto; unset, the page has no mailto link. No model runs and no PRH lookups.
+  - Rejected:
+    - Killing the Konecranes draft: the hold was stale, not real, and the recheck clears it on any DB.
+    - Setting a real team inbox: we have none to name, and putting a personal address in a demo page is worse than an honest note. Set `HH_OWN_INBOX` before the demo to get the button back.
+    - "Companies with a lead *or a brief*" in the selector: Erilava has 3 briefs and no lead, so that rule would have kept the clutter the judge named.
+    - A greyed-out "Reply yes": on a phone it read as a broken button. The note alone is clearer.
+    - A third column (badge → brief → letter) in the artefact: a 90-word brief made it too tall at 1440 px. Beside the hero, it fills the empty right half instead.
+  - Left: the /p headline figure still does not follow calculator edits; the 404 page predates the brand pass; no font preload (the fonts are hashed by the bundler, so a preload needs the hashed URL); the outbox list on /hq still shows the localhost fallback address; the wordmark is still the labelled placeholder.
+
 ## Eval (before / after)
 
 | Metric | Before | After | How measured |
