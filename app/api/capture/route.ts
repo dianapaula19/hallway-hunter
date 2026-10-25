@@ -1,5 +1,5 @@
 import { hasKey } from "@/lib/claude.ts"
-import { didYouMean, exactLive, searchCompanies, type Candidate } from "@/lib/live/prh.ts"
+import { didYouMean, exactLive, parentLive, searchCompanies, type Candidate } from "@/lib/live/prh.ts"
 import { extractCard, SUPPORTED, type CardExtract, type ImageType } from "@/lib/live/vision.ts"
 
 export const dynamic = "force-dynamic"
@@ -51,6 +51,6 @@ export async function POST(req: Request) {
   }
   const live = candidates.filter((c) => !c.ceased)
   const auto = (extracted?.business_id && candidates[0]?.business_id === extracted.business_id) || (candidates.length === 1 && live.length === 1)
-    ? candidates[0].business_id : exactLive(extracted?.company_name || q, candidates)?.business_id ?? null
+    ? candidates[0].business_id : (exactLive(extracted?.company_name || q, candidates) ?? parentLive(extracted?.company_name || q, candidates))?.business_id ?? null
   return Response.json({ q, extracted, candidates, suggestions, auto, ms: Date.now() - t0 })
 }

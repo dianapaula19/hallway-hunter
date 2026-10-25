@@ -4,7 +4,7 @@
 import assert from "node:assert/strict"
 import { countWords, fitBrief, signalText } from "./brief.ts"
 import { scrubNames, stripNames } from "./lead.ts"
-import { didYouMean, exactLive, umlauts, isCeased, lev, parseCompany, rank, searchCompanies, type PrhCompany } from "./prh.ts"
+import { didYouMean, exactLive, parentLive, umlauts, isCeased, lev, parseCompany, rank, searchCompanies, type PrhCompany } from "./prh.ts"
 import { allowedUrl, htmlToText } from "./site.ts"
 import { parseNotices, stem, tedExcerpt, tedQuery, type TedNotice } from "./ted.ts"
 import type { Brief } from "../types.ts"
@@ -59,6 +59,26 @@ const vs = [
 assert.equal(rank("Testi", vs)[0].business_id, "2", "legal form ignored: 'Testi' is an exact match for 'Testi Oyj'")
 assert.equal(exactLive("Testi", vs)?.business_id, "2", "one live exact match is auto-picked")
 assert.equal(exactLive("Testin", vs), null)
+// Real PRH "Fazer" hits (25 Oct 2026, abridged): the parent head office first, the concert agency out of the top 5.
+const fz = (business_id: string, name: string, code: string, line: string) => ({ business_id, name, line, registered: "", ceased: false, code })
+const fazer = [
+  fz("2858322-8", "Fazer Finland Oy", "10610", "Manufacture of grain mill products"),
+  fz("0728786-8", "Fazer Makeiset Oy", "10820", "Manufacture of cocoa, chocolate and sugar confectionery"),
+  fz("1972442-0", "Fazer Leipomot Oy", "10710", "Manufacture of bread"),
+  fz("2372155-6", "Fazer Ravintolat Oy", "56111", "Restaurants and cafeterias"),
+  fz("0832083-4", "Fazer Konserttitoimisto Oy", "90209", "Other performing arts"),
+  fz("2824638-7", "Lakiasiaintoimisto Pia Fazer Oy", "69102", "Legal counselling and advising activities"),
+  fz("0202669-3", "Oy Karl Fazer Ab", "70100", "Activities of head offices"),
+]
+const fr = rank("Fazer", fazer).slice(0, 5).map((c) => c.name)
+assert.equal(fr[0], "Oy Karl Fazer Ab", "the group's head office leads")
+assert.ok(!fr.includes("Fazer Konserttitoimisto Oy"), "off-industry namesake pushed out of the top 5")
+assert.equal(parentLive("Fazer", fazer)?.business_id, "0202669-3", "the one head office named Fazer is auto-picked")
+assert.equal(parentLive("Fazer Finland", fazer), null)
+assert.equal(rank("Fazer Finland", fazer)[0].name, "Fazer Finland Oy", "an exact match still wins")
+const { namesCompany } = await import("./scout.ts")
+assert.equal(namesCompany({ excerpt: `2026-08-01 contract award: "Food". Buyer: Aluksne. Tenderer/winner incl. Fazer Latvija SIA.` }, "Oy Karl Fazer Ab"), false, "a subsidiary abroad is not the company")
+assert.equal(namesCompany({ excerpt: `2026-10-01 contract award: "x". Buyer: Stadt. Tenderer/winner incl. Kemira Oyj.` }, "Kemira Oyj"), true)
 
 assert.equal(lev("ponssee", "ponsse"), 1)
 assert.ok(umlauts("Wartsila").includes("Wärtsilä") && umlauts("Wartsila").length === 3, "ä/ö variants of the first 2 a/o")

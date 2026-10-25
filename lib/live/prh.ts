@@ -5,14 +5,14 @@ import type { Company, Source } from "../types.ts"
 const BASE = "https://avoindata.prh.fi/opendata-ytj-api/v3/companies"
 const YTUNNUS = /^\d{7}-\d$/
 
-export interface Candidate { business_id: string; name: string; line: string; registered: string; ceased: boolean }
+export interface Candidate { business_id: string; name: string; line: string; registered: string; ceased: boolean; code?: string }
 
 type Desc = { languageCode: string; description: string }
 type Dated = { registrationDate?: string; endDate?: string }
 export interface PrhCompany extends Dated {
   businessId: { value: string; registrationDate?: string }
   names: ({ name: string; type: string } & Dated)[]
-  mainBusinessLine?: { descriptions?: Desc[] } | null
+  mainBusinessLine?: { type?: string; descriptions?: Desc[] } | null
   companyForms?: ({ descriptions?: Desc[] } & Dated)[]
   companySituations?: ({ descriptions?: Desc[] } & Dated)[]
   registeredEntries?: ({ type: string } & Dated)[]
@@ -53,13 +53,25 @@ export const norm = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toL
 // Name without its legal form, so "Vaisala" matches "Vaisala Oyj" exactly.
 export const base = (s: string) => norm(s).replace(/\b(oyj|oy|abp|ab|ltd|plc|ky|tmi|ry)\b/g, "").replace(/\s+/g, " ").trim()
 
-// Rank fuzzy PRH name hits: exact > prefix > contains > rest (legal form ignored); ceased firms last; shorter first.
+// A group's parent registers as a head office (TOL 70100), e.g. "Oy Karl Fazer Ab" for "Fazer".
+export const isHeadOffice = (c: Candidate) => c.code === "70100" || /^activities of head offices/i.test(c.line)
+const division = (c: Candidate) => c.code?.slice(0, 2) ?? ""
+
+// Rank fuzzy PRH name hits (legal form ignored): exact > the group's head office > prefix > contains as a word > rest.
+// A namesake outside the industry most matches share (Fazer's concert agency among Fazer's food companies) drops half a
+// tier; ceased firms go last; then shorter names first. ponytail: industry by 2-digit TOL division, majority of 2+.
 export function rank(q: string, cs: Candidate[]): Candidate[] {
   const nq = base(q)
-  const score = (c: Candidate) => {
+  const word = new RegExp(`(^|\\s)${nq.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\s|$)`)
+  const tier = (c: Candidate) => {
     const n = base(c.name)
-    return (n === nq ? 0 : n.startsWith(nq) ? 1 : n.includes(nq) ? 2 : 3) + (c.ceased ? 10 : 0)
+    return n === nq ? 0 : !n.includes(nq) ? 3 : isHeadOffice(c) ? 0.5 : n.startsWith(nq) ? 1 : word.test(n) ? 2 : 2.5
   }
+  const counts = new Map<string, number>()
+  for (const c of cs) if (!c.ceased && tier(c) < 3 && !isHeadOffice(c) && division(c)) counts.set(division(c), (counts.get(division(c)) ?? 0) + 1)
+  const [major, n] = [...counts].sort((a, b) => b[1] - a[1])[0] ?? ["", 0]
+  const off = (c: Candidate) => (n >= 2 && division(c) && division(c) !== major && !isHeadOffice(c) ? 0.5 : 0)
+  const score = (c: Candidate) => tier(c) + off(c) + (c.ceased ? 10 : 0)
   return [...cs].sort((a, b) => score(a) - score(b) || a.name.length - b.name.length)
 }
 
@@ -67,6 +79,14 @@ export function rank(q: string, cs: Candidate[]): Candidate[] {
 export const exactLive = (q: string, cs: Candidate[]) => {
   const hits = cs.filter((c) => !c.ceased && base(c.name) === base(q))
   return hits.length === 1 ? hits[0] : null
+}
+
+// No exact match, but exactly one live head office carries the query as a word ("Fazer" -> Oy Karl Fazer Ab): that is the
+// company people mean by the brand, so it is picked like an exact match. The others stay listed.
+export const parentLive = (q: string, cs: Candidate[]) => {
+  const nq = base(q)
+  const hits = cs.filter((c) => !c.ceased && isHeadOffice(c) && ` ${base(c.name)} `.includes(` ${nq} `))
+  return nq.length >= 3 && hits.length === 1 ? hits[0] : null
 }
 
 // 10-minute in-memory cache: a demo repeats the same lookups, and PRH rate-limits bursts (429).
@@ -108,7 +128,7 @@ export async function searchCompanies(q: string): Promise<Candidate[]> {
   }
   const cs = companies.map((c) => {
     const p = parseCompany(c)
-    return { business_id: p.business_id, name: p.name, line: p.line, registered: p.registered, ceased: p.ceased }
+    return { business_id: p.business_id, name: p.name, line: p.line, registered: p.registered, ceased: p.ceased, code: c.mainBusinessLine?.type }
   })
   return rank(q, cs).slice(0, 5)
 }
