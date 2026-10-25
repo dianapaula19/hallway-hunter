@@ -1,5 +1,5 @@
 // Shared by the letter page (/p) and the landing artefact (/): one number locale and one headline.
-import { eurPerYear } from "../../../lib/night/formula.ts"
+import { eurPerYear, FIRST_STEP_EUR } from "../../../lib/night/formula.ts"
 import type { EuroFormula, Opportunity, Source } from "../../../lib/types.ts"
 
 // Finnish number style everywhere on the page: decimal comma, narrow no-break space between thousands.
@@ -33,11 +33,13 @@ export function withoutEcho(claim: string, quote: string | null | undefined): st
   return [first.charAt(0).toUpperCase() + first.slice(1), ...kept.slice(1)].join(" ")
 }
 
-// The value statement for the H1, from the top card. A figure under ~€25k does not carry a headline for a large
-// company, so the H1 leads with the time and the euro estimate moves to the line below it. When two or more inputs
-// are assumed ("assuming one visit a week", "a pilot team of 5"), the H1 is the card's own fact (its title) instead.
+// The value statement for the H1, from the top card. One team's figure under FIRST_STEP_EUR is not a headline at company
+// level (round 7 readers: "€18 600 is tiny for Ponsse"), so the H1 leads with the people and the hours on the named task and
+// the euro estimate moves to the line below as "a first step". When two or more inputs are assumed ("assuming one visit a
+// week", "a pilot team of 5"), the H1 is the card's own fact (its title) instead.
 // ponytail: assumptions are counted from the claim's wording; per-input sourcing would need a schema change.
-export const SMALL_EUR = 25_000
+const WORDS = ["No one", "One person", "Two people", "Three people", "Four people", "Five people", "Six people", "Seven people", "Eight people", "Nine people", "Ten people"]
+const who = (n: number) => WORDS[n] ?? `${fi(n)} people`
 // teams: the hallway answer to "how many teams like yours do this task?" (pages.letter.teams). With 2+, the headline is the
 // team's figure times that count, and the line under it shows the step ("€37 300 for this team · about 6 teams like it → ~€223 800").
 export function headline(top: Opportunity | undefined, teams?: number | null): { h1: string[]; eur: string | null; label: EuroFormula["label"]; scaled?: boolean } | null {
@@ -46,16 +48,16 @@ export function headline(top: Opportunity | undefined, teams?: number | null): {
   const hours = f.hours_per_week * f.people
   if (!(hours > 0)) return null
   const eurN = eurPerYear(f)
-  const eur = `About ${fiEur(eurN)} a year to win back`
   const assumed = (top.claim.text.match(/\bassum\w*|\bpilot team\b/gi) ?? []).length
+  const title = top.title.replace(/[.\s]*$/, ".")
   // No input sourced at all ("sector estimate", e.g. the offline template's defaults): the hours are a guess, not a headline.
-  if (assumed >= 2 || f.label === "sector estimate") return { h1: [top.title.replace(/[.\s]*$/, ".")], eur, label: f.label }
+  if (assumed >= 2 || f.label === "sector estimate") return { h1: [title], eur: `About ${fiEur(eurN)} a year to win back`, label: f.label }
   if (teams && teams >= 2) return {
     h1: [`About ${fiEur(eurN * teams)} a year to win back,`, `across about ${teams} teams like this one.`],
     eur: `${fi(hours)} h a week by hand in this team: ${fiEur(eurN)} a year · about ${teams} teams like it → ~${fiEur(eurN * teams)}`, label: f.label, scaled: true,
   }
-  if (eurN < SMALL_EUR) return { h1: [`${fi(hours)} hours a week by hand.`], eur, label: f.label }
-  return { h1: [`${fi(hours)} hours a week by hand.`, `${eur}.`], eur: null, label: f.label }
+  if (eurN < FIRST_STEP_EUR) return { h1: [`${who(f.people)}, ${fi(hours)} hours a week:`, title.charAt(0).toLowerCase() + title.slice(1)], eur: `A first step worth about ${fiEur(eurN)} a year`, label: f.label }
+  return { h1: [`${fi(hours)} hours a week by hand.`, `About ${fiEur(eurN)} a year to win back.`], eur: null, label: f.label }
 }
 
 // "What we checked", deterministic: every source behind the page by kind, with dates (TED by publication month,
@@ -103,13 +105,14 @@ if (import.meta.main) {
   assert.equal(withoutEcho("Unrelated tender signal from 2026.", quote), "Unrelated tender signal from 2026.")
   const opp = (claim: string, hours: number, people: number) => ({ title: "Mill visit reports written twice", claim: { text: claim, source_ids: [] }, formula: { hours_per_week: hours, people, weeks_per_year: 46, hourly_cost_eur: 50, automation_share: 0.5, label: "estimate", input_source_ids: [] } }) as unknown as Opportunity
   assert.deepEqual(headline(opp("Assuming one visit a week, a pilot team of 5.", 1, 5))!.h1, ["Mill visit reports written twice."])
-  assert.deepEqual(headline(opp("Two people retype each order.", 7.5, 2))!.h1, ["15 hours a week by hand."])
-  assert.equal(headline(opp("Two people retype each order.", 7.5, 2))!.eur, `About ${fiEur(17250)} a year to win back`)
+  assert.deepEqual(headline(opp("Two people retype each order.", 7.5, 2))!.h1, ["Two people, 15 hours a week:", "mill visit reports written twice."])
+  assert.equal(headline(opp("Two people retype each order.", 7.5, 2))!.eur, `A first step worth about ${fiEur(17250)} a year`)
   assert.equal(headline(opp("Forty people retype.", 7.5, 40))!.h1.length, 2)
+  assert.equal(headline(opp("Forty people retype.", 7.5, 40))!.eur, null)
   const scaled = headline(opp("Three of us retype.", 10, 3), 6)!
   assert.deepEqual(scaled.h1, [`About ${fiEur(34500 * 6)} a year to win back,`, "across about 6 teams like this one."])
   assert.equal(scaled.eur, `30 h a week by hand in this team: ${fiEur(34500)} a year · about 6 teams like it → ~${fiEur(34500 * 6)}`)
-  assert.deepEqual(headline(opp("Three of us retype.", 10, 3), null)!.h1, ["30 hours a week by hand.", `About ${fiEur(34500)} a year to win back.`])
+  assert.deepEqual(headline(opp("Three of us retype.", 10, 3), null)!.h1, ["Three people, 30 hours a week:", "mill visit reports written twice."])
   const guess = opp("Two people retype each order.", 6, 3); guess.formula.label = "sector estimate"
   assert.deepEqual(headline(guess)!.h1, ["Mill visit reports written twice."])
   const src = (kind: Source["kind"], excerpt: string, url: string | null, at = "2026-10-24T10:00:00Z") => ({ kind, excerpt, url, fetched_at: at })
