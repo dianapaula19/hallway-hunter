@@ -170,7 +170,7 @@ export default async function DraftPage({ params, searchParams }: { params: Prom
         )}
 
         <div className={s.sign}>
-          <span className={s.signRole}>{sender.name}{sender.role && ` · ${sender.role}`}</span>
+          <span className={s.signRole}>{sender.name}{sender.role && <span className={s.signSub}> · {sender.role}</span>}</span>
           {sender.phone && <a className={s.tel} href={`tel:${sender.phone.replace(/[^\d+]/g, "")}`}>{sender.phone}</a>}
           <span className={s.muted}>{approved
             ? <>Drafted by Velho&apos;s AI analysts, checked by a person at Velho before you saw it.</>

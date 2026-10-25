@@ -107,11 +107,11 @@ Also return:
   above the fold under "Why this matters at <company>". State only what the source states, citing it: no link words
   ("means", "adds", "so", "which drives"), no "if", no guess. E.g. "Your own site lists eleven plants in six countries and
   says customers order through a web shop and by email." (an invented example: take nothing from it). If the store has
-  no such fact, you may fetch ONE page of their own site likely to state it (about, locations, dealers, contact). If no
-  source states one, return empty text and empty source_ids. Never restate the hallway note or the company blurb.
+  no such fact, FIRST call fetch_site on one or two pages of their own site likely to state it (e.g. /company, /about-us,
+  /contact, /dealers, /locations on their domain). Only if no source then states one, return empty text and empty source_ids. Never restate the hallway note or the company blurb.
 - check_first: only when insight is empty, otherwise "". What we would check first to size card 1 across the company, as
   a short phrase (max 20 words) with no digits and no names except words already in the hallway note, e.g. "how many
-  dealers send parts orders as PDFs, and into which inboxes they arrive".
+  customers send orders this way, and into which inboxes or systems they arrive".
 - path: ONE sentence (max 30 words) framing card 1 as a pilot when its team is small (people 5 or fewer): start with card 1's
   process, then name what the same fix reaches next, e.g. "Start with dealer parts orders; the same reader then handles warranty
   claims and service reports." Only when a cited source names that next process: cite it (and the hallway source if you repeat
@@ -185,7 +185,7 @@ export async function research(ctx: NightContext, pageId: string): Promise<{ run
   // An uncited line may state no fact (no digit, €, % or proper noun), the script-line rule, unless its only facts are
   // card 1's own words ("Start with PDF orders into SAP; …").
   const card1 = opportunities[0] ? `${opportunities[0].title} ${opportunities[0].claim.text} ${ctx.lead?.quote ?? ""}`.toLowerCase() : ""
-  const cardOnly = (t: string) => !needsSource(t, company.name) || factWords(t).every((w) => card1.includes(w.toLowerCase()))
+  const cardOnly = (t: string) => !needsSource(t, company.name) || factWords(t).every((w) => card1.includes(w.toLowerCase().replace(/'?s$/, "")))
   // "path": cited, or uncited under that rule; when its facts are card 1's, it cites card 1's sources rather than being dropped.
   const pt = r.json?.path
   const path = pt?.text?.trim() && opportunities.length
