@@ -139,7 +139,7 @@ export async function research(ctx: NightContext, pageId: string): Promise<{ run
   ]
 
   const h = hoursFromQuote(ctx.lead?.quote)
-  const lead = ctx.lead ? `Hallway lead (role: ${ctx.lead.role}): pain "${ctx.lead.pain}", quote "${ctx.lead.quote}".${h ? `\nHours, converted in code from the quote (use exactly these numbers in card 1's claim and formula): ${h.working}.` : ""}` : "No hallway lead."
+  const lead = ctx.lead ? `Hallway lead (role: ${ctx.lead.role}): pain "${ctx.lead.pain}", quote "${ctx.lead.quote}".${h ? `\nHours, converted in code from the quote (use exactly these numbers in card 1's claim and formula): ${h.working}.` : ""}${ctx.lead.teams ? `\nAsked in the hallway, they said about ${ctx.lead.teams} teams like theirs across the company do this task. The page scales the headline by that count itself: keep card 1's people as the one team met.` : ""}` : "No hallway lead."
   const r = await runAgent<{ opportunities: { title: string; claim: Claim; formula: Partial<EuroFormula> }[]; why?: Claim; path?: Claim; questions?: Claim[] }>({
     agent: "researcher", subjectId: pageId, system: SYSTEM, tools, maxToolCalls: 8, effort: "medium", schema: SCHEMA,
     prompt: `Company: ${company.name}${company.business_id ? ` (Y-tunnus ${company.business_id})` : ""}\n${lead}\n\nEvidence store:\n${sourceList(ctx.sources) || "(empty)"}\n\nReturn 1-3 opportunities, only those a cited source directly supports.`,

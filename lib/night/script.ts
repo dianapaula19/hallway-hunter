@@ -39,9 +39,14 @@ Rules:
   Do no arithmetic aloud: say the time today in one phrase (the team's hours per week), the estimate, and that the formula is on the page to change.
 - No promises ("guarantee", "will save", "we will", "we'll"). No personal names.
 - Never state consequences (errors, delays, downtime, unhappy customers) that no source states.
-- The last line is the ask: ONE question sentence of at most 30 words and nothing after it (the page prints the terms), a yes/no the reader can answer in one reply, tied to the first card's evidence (or the first question when there are no cards).
-  A named author offers a free one-page teardown of that named process, within a week. e.g. "Shall a Velho consultant send you a free one-page teardown of how Friday inspection notes reach SAP, within a week?" (cites the hallway source).
-  Address the reader directly ("you"); never ask them to involve staff.`
+- The last line is the ask: ONE question sentence of at most 35 words and nothing after it (the page prints the terms), a yes/no the reader can answer in one reply.
+  Anchor it on this page's own cited signal: when a company-level "why" fact is listed below (a framework, award or contract with
+  its date), open the question with a short clause about that fact, e.g. "Before the Düsseldorf framework starts in 2027, shall a
+  Velho consultant map how emailed PDF orders reach SAP today, on one free page within a week?" and cite the why's public source
+  and the hallway source. Without a why fact, anchor it on the first card's evidence (or the first question when there are no cards).
+  A named author ("a Velho consultant") offers something free, one page, within a week, about that named process: a map of the
+  steps today, a single-entry version with its rough cost, or a teardown. Pick what fits; do not default to the same phrasing.
+  Address the reader directly ("you"); never ask them to involve staff. No digits unless the line cites a source that has them.`
 
 export const CLOSE = "Shall a Velho consultant send you a free one-page teardown of that first task, with a single-entry version and its rough cost, within a week?"
 // The fixed terms of the offer, printed on the page under the question instead of being read aloud.
@@ -79,7 +84,7 @@ export const wordCount = (lines: ScriptLine[]) => lines.reduce((n, l) => n + l.t
 export async function writeScript(
   ctx: NightContext, pageId: string, opps: DraftOpportunity[],
   rewrite?: { previous: ScriptLine[]; score: SkepticScore },
-  extra: { recipient?: string | null; questions?: Claim[]; why?: Claim | null; path?: Claim | null } = {},
+  extra: { recipient?: string | null; questions?: Claim[]; why?: Claim | null; path?: Claim | null; teams?: (Claim & { n: number }) | null } = {},
 ): Promise<{ runId: string; lines: ScriptLine[]; dropped: ScriptLine[] }> {
   const hallway = ctx.sources.find((s) => s.kind === "hallway" && s.lead_id === ctx.lead?.id)
   const cards = opps.map((o, i) =>
@@ -91,6 +96,7 @@ export async function writeScript(
     `Opportunity cards on the page:\n${cards || "(none: thin data)"}`,
     extra.why ? `Why it matters at company level (printed under card 1): ${extra.why.text} [${extra.why.source_ids.join(", ")}]` : "",
     extra.path ? `Pilot path (printed under card 1): ${extra.path.text} [${extra.path.source_ids.join(", ")}]` : "",
+    extra.teams && opps[0] ? `Headline scale (printed at the top): ${extra.teams.text} So card 1's ${fmtEur(eurPerYear(opps[0].formula))} for this team becomes about ${fmtEur(eurPerYear(opps[0].formula) * extra.teams.n)} a year across them, an estimate [${extra.teams.source_ids.join(", ")}]. Say that total once, right after card 1's estimate, citing the hallway source.` : "",
     extra.questions?.length ? `Questions on the page ("What we'd ask you"):\n${extra.questions.map((q) => `- ${q.text} [${q.source_ids.join(", ")}]`).join("\n")}` : "",
     `Evidence store:\n${sourceList(ctx.sources)}`,
     rewrite ? `REWRITE. A skeptical CEO scored the previous draft stop=${rewrite.score.stop} read=${rewrite.score.read} reply=${rewrite.score.reply}. Notes: ${rewrite.score.notes}\nApply the notes only where they fit every rule above (labels, citations, no promises, the ask format).\nPrevious draft:\n${rewrite.previous.map((l) => `${l.host}: ${l.text}`).join("\n")}` : "",

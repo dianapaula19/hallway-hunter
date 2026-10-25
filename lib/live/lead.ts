@@ -13,6 +13,11 @@ export function scrubNames(text: string): string {
   return text.replace(INTRO, (_m, lead: string) => `${lead} [name]`).replace(TITLE, "[name]")
 }
 
+// 2..1000 teams, or null: 1 team is the pilot itself, and anything else is not an answer we can scale by.
+export const teamsCount = (n: unknown) => { const v = Math.round(Number(n)); return Number.isFinite(v) && v >= 2 && v <= 1000 ? v : null }
+export const hallwayExcerpt = (l: Pick<Lead, "quote" | "role" | "teams">) =>
+  `"${l.quote}" (${l.role})${l.teams ? ` Asked how many teams like theirs across the company do this task: about ${l.teams}.` : ""}`
+
 interface Extract { names: string[]; role: string; quote: string; pain: string; next_step: string; temperature: Temperature }
 
 // Replace each listed name and its Finnish inflections ("Liisa" -> "Liisan", "Liisalle") with [name].
@@ -38,7 +43,9 @@ const SCHEMA = {
 
 // synthetic: a demo note, invented for a demo (the /capture toggle); pages label it so nobody reads it as a real quote.
 // role: the job title from the badge or typed on /capture; used when the note itself does not say one.
-export async function extractLead(companyId: string, transcript: string, synthetic = false, role?: string | null): Promise<Lead> {
+// teams: their answer to "how many teams like yours across the company do this task?" (optional). It goes into the
+// hallway source's excerpt, so the headline scaled by it cites what was actually said.
+export async function extractLead(companyId: string, transcript: string, synthetic = false, role?: string | null, teams?: number | null): Promise<Lead> {
   if (!get("SELECT id FROM companies WHERE id = ?", companyId)) throw new Error("unknown company")
   const clean = scrubNames(transcript.trim()).slice(0, 4000)
   if (!clean) throw new Error("empty transcript")
@@ -76,8 +83,9 @@ export async function extractLead(companyId: string, transcript: string, synthet
     next_step: clip(x.next_step, 200),
     temperature: (["cold", "warm", "hot"] as const).includes(x.temperature) ? x.temperature : "warm",
     synthetic: synthetic ? 1 : 0,
+    teams: teamsCount(teams),
   }
   insert("leads", lead as unknown as Record<string, unknown>)
-  addSource({ company_id: companyId, kind: "hallway", url: null, lead_id: lead.id, title: `Hallway: ${lead.role}`, excerpt: `"${lead.quote}" (${lead.role})` })
+  addSource({ company_id: companyId, kind: "hallway", url: null, lead_id: lead.id, title: `Hallway: ${lead.role}`, excerpt: hallwayExcerpt(lead) })
   return lead
 }

@@ -38,7 +38,9 @@ export function withoutEcho(claim: string, quote: string | null | undefined): st
 // are assumed ("assuming one visit a week", "a pilot team of 5"), the H1 is the card's own fact (its title) instead.
 // ponytail: assumptions are counted from the claim's wording; per-input sourcing would need a schema change.
 export const SMALL_EUR = 25_000
-export function headline(top: Opportunity | undefined): { h1: string[]; eur: string | null; label: EuroFormula["label"] } | null {
+// teams: the hallway answer to "how many teams like yours do this task?" (pages.letter.teams). With 2+, the headline is the
+// team's figure times that count, and the line under it shows the step ("€37 300 for this team · about 6 teams like it → ~€223 800").
+export function headline(top: Opportunity | undefined, teams?: number | null): { h1: string[]; eur: string | null; label: EuroFormula["label"]; scaled?: boolean } | null {
   if (!top) return null
   const f = top.formula
   const hours = f.hours_per_week * f.people
@@ -48,6 +50,10 @@ export function headline(top: Opportunity | undefined): { h1: string[]; eur: str
   const assumed = (top.claim.text.match(/\bassum\w*|\bpilot team\b/gi) ?? []).length
   // No input sourced at all ("sector estimate", e.g. the offline template's defaults): the hours are a guess, not a headline.
   if (assumed >= 2 || f.label === "sector estimate") return { h1: [top.title.replace(/[.\s]*$/, ".")], eur, label: f.label }
+  if (teams && teams >= 2) return {
+    h1: [`${fi(hours)} hours a week by hand, in each of about ${teams} teams.`, `About ${fiEur(eurN * teams)} a year to win back.`],
+    eur: `${fiEur(eurN)} a year for this team · about ${teams} teams like it → ~${fiEur(eurN * teams)}`, label: f.label, scaled: true,
+  }
   if (eurN < SMALL_EUR) return { h1: [`${fi(hours)} hours a week by hand.`], eur, label: f.label }
   return { h1: [`${fi(hours)} hours a week by hand.`, `${eur}.`], eur: null, label: f.label }
 }
@@ -100,6 +106,10 @@ if (import.meta.main) {
   assert.deepEqual(headline(opp("Two people retype each order.", 7.5, 2))!.h1, ["15 hours a week by hand."])
   assert.equal(headline(opp("Two people retype each order.", 7.5, 2))!.eur, `About ${fiEur(17250)} a year to win back`)
   assert.equal(headline(opp("Forty people retype.", 7.5, 40))!.h1.length, 2)
+  const scaled = headline(opp("Three of us retype.", 10, 3), 6)!
+  assert.deepEqual(scaled.h1, ["30 hours a week by hand, in each of about 6 teams.", `About ${fiEur(34500 * 6)} a year to win back.`])
+  assert.equal(scaled.eur, `${fiEur(34500)} a year for this team · about 6 teams like it → ~${fiEur(34500 * 6)}`)
+  assert.deepEqual(headline(opp("Three of us retype.", 10, 3), null)!.h1, ["30 hours a week by hand.", `About ${fiEur(34500)} a year to win back.`])
   const guess = opp("Two people retype each order.", 6, 3); guess.formula.label = "sector estimate"
   assert.deepEqual(headline(guess)!.h1, ["Mill visit reports written twice."])
   const src = (kind: Source["kind"], excerpt: string, url: string | null, at = "2026-10-24T10:00:00Z") => ({ kind, excerpt, url, fetched_at: at })

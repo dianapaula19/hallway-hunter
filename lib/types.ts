@@ -61,6 +61,7 @@ export interface Lead {
   next_step: string
   temperature: Temperature
   synthetic: number // 1 = demo note, invented for a demo; pages say "nobody at <company> said this"
+  teams?: number | null // answer to "how many teams like theirs across the company do this task?" (optional, said in the hallway)
   created_at: string
 }
 
@@ -108,6 +109,7 @@ export interface PageLetter {
   why?: Claim | null // card 1's company-level reason, cited to a public source (TED, own site, PRH): why an exec cares
   path?: Claim | null // pilot framing: start with card 1's process, then the cited processes the same fix reaches
   questions: Claim[] // no-lead pages: what we'd ask, each grounded in a public source
+  teams?: (Claim & { n: number }) | null // "about N teams like this across <company>", cited to the hallway note; scales the headline
 }
 
 export type PageStatus = "draft" | "pending_approval" | "approved" | "killed"

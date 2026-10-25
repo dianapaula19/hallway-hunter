@@ -28,7 +28,7 @@ function offlineOpps(ctx: NightContext, pageId: string): DraftOpportunity[] {
   const fromNote = h?.people && hallway ? { hours_per_week: h.eachPerWeek, people: h.people, input_source_ids: [hallway.id] } : { hours_per_week: 6, people: 3 }
   if (ctx.lead && hallway) raw.push({ title: (pain.split(/[,;:]/)[0] || "The task from the hallway").slice(0, 70), claim: { text: `A ${ctx.lead.role} described it in the hallway: ${pain.charAt(0).toLowerCase() + pain.slice(1)}.`, source_ids: [hallway.id] }, formula: normalizeFormula(fromNote, known) })
   // Only the hallway card has real evidence of a manual task; a public signal stands in only when there is no lead.
-  if (!raw.length) for (const s of others.slice(0, 1)) raw.push({ title: s.title.slice(0, 60), claim: { text: `Signal worth a closer look: ${s.excerpt.split(/(?<=\.)\s/)[0].slice(0, 160)}`, source_ids: [s.id] }, formula: normalizeFormula({}, known) })
+  if (!raw.length) for (const s of others.slice(0, 1)) raw.push({ title: clipWords(s.title, 60), claim: { text: `Signal worth a closer look: ${clipWords(s.excerpt.split(/(?<=\.)\s/)[0], 160)}`, source_ids: [s.id] }, formula: normalizeFormula({}, known) })
   const { kept } = sanitizeClaims(ctx.company.id, raw.map((o) => o.claim), runId)
   logStep(runId, "info", "offline", "no ANTHROPIC_API_KEY: template cards from the evidence store", raw.length)
   endRun(runId, "ok", `${kept.length} template cards`)
@@ -53,14 +53,28 @@ function offlineWhy(ctx: NightContext): PageLetter["why"] {
   const ted = ctx.sources.filter((x) => x.kind === "ted").sort((a, b) => b.excerpt.localeCompare(a.excerpt)) // excerpts start with the date
   const s = [...ted, ...ctx.sources.filter((x) => x.kind === "site")][0]
   if (!s || !ctx.lead) return null
-  const clip = (t: string, n: number) => (t.length > n ? `${t.slice(0, n - 1)}…` : t)
   // TED excerpt: '2026-08-24 contract award: "<title>". Buyer: …. Tenderer/winner incl. <names>.' (lib/live/ted.ts)
   const date = s.excerpt.match(/^\d{4}-\d{2}-\d{2}/)?.[0]
   const title = s.excerpt.match(/"([^"]+)"/)?.[1]
   const won = s.excerpt.match(/Tenderer\/winner incl\. (.+?)\.?$/)?.[1]
-  const text = s.kind === "site" ? `From your own site: ${clip(s.excerpt, 200)}`
-    : won && title ? `On the public record (TED${date ? `, ${date}` : ""}): ${won} won "${clip(title, 140)}".` : `On the public record (TED): ${clip(s.excerpt, 220)}`
+  const text = s.kind === "site" ? `From your own site: ${clipWords(s.excerpt, 200)}`
+    : won && title ? `On the public record (TED${date ? `, ${date}` : ""}): ${won} won a contract for ${tedTopic(title)}.` : `On the public record (TED): ${clipWords(s.excerpt, 220)}`
   return { text, source_ids: [s.id] }
+}
+
+// Cut at a word boundary, never mid-word ("…Fahrgastinformationsanlagen au…" was the bug).
+export const clipWords = (t: string, n: number) => {
+  if (t.length <= n) return t
+  const cut = t.slice(0, n - 1)
+  return `${(cut.includes(" ") ? cut.slice(0, cut.lastIndexOf(" ")) : cut).replace(/[\s,;:–-]+$/, "")}…`
+}
+
+// TED titles read "<Country> – <English CPV category> – <title in the buyer's language>". With no model to translate the
+// last part, the template names the English category and the country instead ("passenger information systems in Germany").
+export function tedTopic(title: string): string {
+  const parts = title.split(" – ").map((x) => x.trim()).filter(Boolean)
+  if (parts.length >= 3) return `${parts[1].charAt(0).toLowerCase() + parts[1].slice(1)} in ${parts[0]}`
+  return `“${clipWords(title, 90)}”`
 }
 
 const savePage = (pageId: string, fields: Record<string, unknown>) => {
@@ -77,7 +91,7 @@ export function startNightPath(companyId: string, leadId?: string | null, recipi
   const ctx = loadContext(companyId, leadId)
   const pageId = uid("page")
   const slug = uid("p")
-  const letter: PageLetter = { recipient: recipient?.trim().slice(0, 60) || null, scale: null, checked: null, why: null, path: null, questions: [] }
+  const letter: PageLetter = { recipient: recipient?.trim().slice(0, 60) || null, scale: null, checked: null, why: null, path: null, questions: [], teams: null }
   insert("pages", { id: pageId, slug, company_id: companyId, lead_id: ctx.lead?.id ?? null, status: "draft", script: [], skeptic: [], letter, created_at: now() })
   const runId = startRun("night_path", pageId, "pipeline")
   const done = build(ctx, pageId, slug, letter, rewrites).then(
@@ -126,6 +140,11 @@ async function build(ctx: NightContext, pageId: string, slug: string, letter: Pa
       opps[0] = { ...opps[0], formula: { ...f, hours_per_week: each, people } }
     }
   }
+  // The headline scales by the hallway answer to "how many teams like yours?", cited to that note. Not asked: no scaling.
+  const n = ctx.lead?.teams
+  letter.teams = n && n >= 2 && opps[0] && hallwayId && opps[0].claim.source_ids.includes(hallwayId)
+    ? { n, text: `About ${n} teams like this one across ${ctx.company.name}, as said in the hallway.`, source_ids: [hallwayId] }
+    : null
   letter.why = found.why
   letter.path = found.path
   letter.questions = found.questions
@@ -134,7 +153,7 @@ async function build(ctx: NightContext, pageId: string, slug: string, letter: Pa
   const fresh = loadContext(companyId, ctx.lead?.id) // researcher tools may have added sources
 
   // 2. script (sanitized and fitted inside), 3. skeptic loop (REWRITES rewrites, every round stored)
-  const extra = { recipient: letter.recipient, questions: letter.questions, why: letter.why, path: letter.path }
+  const extra = { recipient: letter.recipient, questions: letter.questions, why: letter.why, path: letter.path, teams: letter.teams }
   let lines = live ? (await writeScript(fresh, pageId, opps, undefined, extra)).lines : offlineScript(fresh, pageId, opps)
   savePage(pageId, { script: lines })
   const rounds: SkepticScore[] = []
@@ -166,6 +185,7 @@ async function build(ctx: NightContext, pageId: string, slug: string, letter: Pa
       `Velho draft, by Velho's AI analysts. Internal review copy.`,
       `Page: /p/${slug}`,
       ...opps.map((o) => `- ${o.title} (${o.formula.label} ${fmtEur(eurPerYear(o.formula))}/yr)`),
+      ...(letter.teams && opps[0] ? [`  × about ${letter.teams.n} teams like it (said in the hallway) = ${fmtEur(eurPerYear(opps[0].formula) * letter.teams.n)}/yr`] : []),
       final ? `Skeptic-CEO: stop ${final.stop}, read ${final.read}, reply ${final.reply}. ${final.notes}` : "Skeptic-CEO: not run.",
       compliance.ok ? "Compliance: ok." : `Compliance issues: ${compliance.issues.join("; ")}`,
     ].join("\n"),
@@ -173,5 +193,15 @@ async function build(ctx: NightContext, pageId: string, slug: string, letter: Pa
   }
   savePage(pageId, { compliance, status: "pending_approval" })
   insert("approvals", { id: uid("appr"), kind: "page", ref_id: pageId, payload, status: "PENDING", created_at: now() })
+}
+
+// Self-check (no model, no DB): node lib/night/pipeline.ts
+if (import.meta.main) {
+  const assert: typeof import("node:assert/strict") = (await import("node:assert/strict")).default
+  assert.equal(tedTopic("Germany – Electronic scoreboards – ÜSTRA AG - regiobus GmbH - Herstellung und Betrieb einer Gesamtlösung für Fahrgastinformationsanlagen au"), "electronic scoreboards in Germany")
+  assert.equal(tedTopic("Ecrans TFT"), "“Ecrans TFT”")
+  assert.equal(clipWords("Herstellung und Betrieb einer Gesamtlösung für Fahrgastinformationsanlagen auf Basis", 60), "Herstellung und Betrieb einer Gesamtlösung für…")
+  assert.equal(clipWords("short", 60), "short")
+  console.log("pipeline self-check ok")
 }
 

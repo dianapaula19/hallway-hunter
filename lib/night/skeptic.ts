@@ -36,6 +36,7 @@ export async function skepticScore(
   const top = letter.why ? `Top of the page, before the cards. Why it matters at ${companyName}: ${letter.why.text}\n\n` : ""
   const extras = [
     facts.hours ? `Hours, converted in code from the hallway note (this arithmetic is correct; do not recompute it or call it inconsistent): ${facts.hours}` : "",
+    letter.teams && opps[0] ? `Headline, scaled by what the person met said: ${fmtEur(eurPerYear(opps[0].formula))} a year for this team × ${letter.teams.text.replace(/\.$/, "")} = about ${fmtEur(eurPerYear(opps[0].formula) * letter.teams.n)} a year (estimate; the team count is cited to the hallway note).` : "",
     facts.contracts ? `Beyond the pilot (under card 1): ${facts.contracts}` : "",
     letter.path ? `Pilot path (under card 1): ${letter.path.text}` : "",
     letter.checked ? `What we checked: ${letter.checked.text}` : "",
@@ -43,7 +44,7 @@ export async function skepticScore(
   ].filter(Boolean).join("\n")
   const r = await runAgent<SkepticScore>({
     agent: "skeptic_ceo", subjectId: pageId, system: system(reader, size), schema: SCHEMA, effort: "low",
-    prompt: `Page: "For the ${reader}, ${companyName}, Velho draft", by Velho's AI analysts. The hallway quote was said in person to a Velho consultant at a conference.\n\n${top}The pilot: the euro figure covers only the team in its formula, and the page says so ("The pilot: … for a team of N").\nCards (each shows its formula, with every input editable):\n${opps.map((o) => { const f = o.formula; return `- ${o.title}: ${o.claim.text} (${o.formula.label} ${fmtEur(eurPerYear(f))}/yr = ${f.hours_per_week} h/week each × ${f.people} people × ${f.weeks_per_year} weeks × €${f.hourly_cost_eur}/h × ${f.automation_share} automatable)` }).join("\n") || "(no cards)"}${extras ? `\n\n${extras}` : ""}\n\nAudio script (the page prints the ask's terms: free, no data, no call, a yes by reply is enough):\n${lines.map((l) => `${l.host}: ${l.text}`).join("\n")}`,
+    prompt: `Page: "For the ${reader}, ${companyName}, Velho draft", by Velho's AI analysts. The hallway quote was said in person to a Velho consultant at a conference.\nLayout: above the fold only the headline, the hallway quote, the one question and a Reply yes button; "The working" (why it matters, the cards with their editable formula, the pilot, sources, audio) is folded behind one click.\n\n${top}The pilot: the euro figure covers only the team in its formula, and the page says so ("The pilot: … for a team of N").\nCards (each shows its formula, with every input editable):\n${opps.map((o) => { const f = o.formula; return `- ${o.title}: ${o.claim.text} (${o.formula.label} ${fmtEur(eurPerYear(f))}/yr = ${f.hours_per_week} h/week each × ${f.people} people × ${f.weeks_per_year} weeks × €${f.hourly_cost_eur}/h × ${f.automation_share} automatable)` }).join("\n") || "(no cards)"}${extras ? `\n\n${extras}` : ""}\n\nAudio script (the page prints the ask's terms: free, no data, no call, a yes by reply is enough):\n${lines.map((l) => `${l.host}: ${l.text}`).join("\n")}`,
   })
   const j = r.json
   return { runId: r.runId, score: { stop: clamp(j?.stop), read: clamp(j?.read), reply: clamp(j?.reply), reply_why: String(j?.reply_why ?? "").slice(0, 300), notes: String(j?.notes ?? "").slice(0, 600) } }

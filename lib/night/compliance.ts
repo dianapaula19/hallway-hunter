@@ -41,7 +41,7 @@ export const MAX_SECS = 80
 
 // Every cited line the letter prints besides the cards: size fact, the why and pilot lines, old "checked" sentences, questions.
 export const letterClaims = (letter?: PageLetter | null) =>
-  [letter?.scale, letter?.why, letter?.path, letter?.checked, ...(letter?.questions ?? [])].filter((c) => !!c)
+  [letter?.scale, letter?.why, letter?.path, letter?.checked, letter?.teams, ...(letter?.questions ?? [])].filter((c) => !!c)
 
 export const isConfidential = (lead: Lead | null) => !!lead && CONFIDENTIAL.test(`${lead.quote} ${lead.pain} ${lead.next_step}`)
 
@@ -96,6 +96,10 @@ export function checkCompliance(input: {
     const x = l.source_ids.some((id) => kind.get(id) === "ted" || kind.get(id) === "site") && uncitedInference(l.text)
     if (x) issues.push(`audio line states an uncited conclusion as fact: ${x.slice(0, 80)}`)
   }
+  // The headline's team multiplier is sourced from the hallway note: its cited hallway source must state that count.
+  const t = letter?.teams
+  if (t && !sources.some((x) => x.kind === "hallway" && t.source_ids.includes(x.id) && x.excerpt.includes(`about ${t.n}.`)))
+    issues.push(`the headline scales by ${t.n} teams, but no cited hallway note states that count`)
   if (isConfidential(lead) && lines.some((l) => l.source_ids.some((id) => hallwayIds.has(id))))
     issues.push("lead is marked confidential but the script uses the hallway detail")
 
@@ -126,6 +130,11 @@ if (import.meta.main) {
   }).issues
   assert.ok(page(null).some((i) => i.startsWith("page cites no public source")))
   assert.ok(!page({ recipient: null, scale: null, questions: [], checked: { text: "A framework.", source_ids: ["s_t"] } }).some((i) => i.startsWith("page cites")))
+  // teams: accepted when the cited hallway note states the count (src() excerpts say "x", so this one must fail)
+  const teams = { recipient: null, scale: null, questions: [], checked: { text: "A framework.", source_ids: ["s_t"] }, teams: { n: 6, text: "About 6 teams like this one across X, as said in the hallway.", source_ids: ["s_h"] } }
+  assert.ok(page(teams).some((i) => i.includes("scales by 6 teams")))
+  const said = checkCompliance({ companyName: "X", lead: null, sources: [{ ...src("s_h", "hallway"), excerpt: `"q" (Lead) Asked how many teams like theirs across the company do this task: about 6.` }, src("s_t", "ted")], letter: teams, opps: [], lines: [] }).issues
+  assert.ok(!said.some((i) => i.includes("teams")))
   const long = checkCompliance({ companyName: "X", lead: null, sources: [], opps: [], letter: null, lines: [{ host: "A", text: "Velho's AI analysts. " + "word ".repeat(215), source_ids: [] }] }).issues
   assert.ok(long.some((i) => i.startsWith("audio runs about")))
   const why = (text: string) => page({ recipient: null, scale: null, questions: [], checked: null, why: { text, source_ids: ["s_t"] } })
