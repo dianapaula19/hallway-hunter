@@ -181,3 +181,24 @@
   .yesNote { max-width: none; }
 }
 .head + .h1 { margin-top: 36px; }
+
+/* /hq preview only: the review state, never shown to the company reader */
+.banner { margin: 16px 0 0; padding: 8px 12px; border-radius: 8px; background: var(--accent-soft); color: var(--ink); font-size: 13px; }
+.tel { color: var(--accent); text-decoration: none; width: max-content; }
+
+/* "The working": everything behind the headline, folded by default with a one-line summary */
+.working { margin-top: 40px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.working > summary {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 16px 0; cursor: pointer; list-style: none; min-height: 44px;
+}
+.working > summary::-webkit-details-marker { display: none; }
+.workingH { font-size: 13px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; color: var(--accent); }
+.workingH::before { content: "▸ "; }
+.working[open] .workingH::before { content: "▾ "; }
+.workingSum { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 0; overflow-wrap: anywhere; }
+.working[open] { padding-bottom: 32px; }
+.working .section { margin-top: 32px; }
+.working .whyLead { margin-top: 4px; }
+.working .ps { margin-top: 36px; }
+.ask { margin-top: 36px; }
+.sign { margin-top: 36px; }

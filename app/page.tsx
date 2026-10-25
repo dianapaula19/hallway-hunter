@@ -19,11 +19,14 @@ const latest = () =>
      ORDER BY p.created_at DESC LIMIT 5`,
   )
 
-// The before/after artefact: the newest approved or waiting page, preferring one with a hallway quote, drawn small in markup.
+// The before/after artefact: the strongest approved or waiting page, drawn small in markup. Strongest = has a hallway quote,
+// then the best final reader-test reply score (an offline template page has none and goes last), then the newest.
 function sample() {
   const p = get<{ id: string; slug: string; name: string; lead_id: string | null; letter: PageLetter | null }>(
     `SELECT p.id, p.slug, c.name, p.lead_id, p.letter FROM pages p JOIN companies c ON c.id = p.company_id
-     WHERE p.status IN ('approved', 'pending_approval') ORDER BY p.lead_id IS NOT NULL DESC, p.created_at DESC LIMIT 1`,
+     WHERE p.status IN ('approved', 'pending_approval')
+     ORDER BY p.lead_id IS NOT NULL DESC, COALESCE(json_extract(p.skeptic, '$[#-1].reply'), -1) DESC,
+       COALESCE(json_extract(p.skeptic, '$[#-1].stop'), -1) DESC, p.created_at DESC LIMIT 1`,
   )
   if (!p) return null
   const lead = p.lead_id ? get<Lead>("SELECT * FROM leads WHERE id = ?", p.lead_id) ?? null : null
@@ -35,7 +38,7 @@ function sample() {
     role: lead?.role ?? null,
     quote: lead && !isConfidential(lead) ? lead.quote : null,
     synthetic: !!lead?.synthetic || /\(synthetic\)/i.test(p.name),
-    head: headline(top),
+    head: headline(top, p.letter?.teams?.n),
     formula: top?.formula ?? null,
   }
 }

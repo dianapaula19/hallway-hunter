@@ -22,8 +22,10 @@ export function Chips({ ids, num }: { ids: string[]; num: Record<string, number>
 
 // Editable estimate: every input visible, recomputed in the browser. Text inputs, not type=number, so the
 // numbers read the same Finnish way (7,5) whatever the viewer's browser locale is.
-export function FormulaRow({ formula, chips }: { formula: EuroFormula; chips: ReactNode }) {
+// teams (card 1 only, when the hallway note gave a count): one more editable multiplier after the team's figure.
+export function FormulaRow({ formula, chips, teams, teamsChips }: { formula: EuroFormula; chips: ReactNode; teams?: number | null; teamsChips?: ReactNode }) {
   const [f, setF] = useState(formula)
+  const [n, setN] = useState(teams ?? 0)
   // Inputs are uncontrolled so a half-typed "7," stays as typed; only a valid number updates the estimate.
   const shown = (k: FormulaKey, v: number) => fi(k === "automation_share" ? Math.round(v * 100) : v)
   const set = (k: FormulaKey, raw: string) => {
@@ -51,6 +53,19 @@ export function FormulaRow({ formula, chips }: { formula: EuroFormula; chips: Re
           <span className={s.eq} aria-hidden>=</span> {fiEur(eurPerYear(f))} <span className={s.per}>a year</span>
           <span className={s.tag}>{f.label}</span>
         </p>
+        {teams ? (
+          <p className={s.result} aria-live="polite">
+            <span className={s.op} aria-hidden>×</span>
+            <label className={s.term}>
+              <input type="text" inputMode="numeric" autoComplete="off" defaultValue={fi(n)}
+                onChange={(e) => { const v = parseFi(e.target.value); if (Number.isFinite(v)) setN(Math.min(1000, Math.max(0, Math.round(v)))) }}
+                onBlur={(e) => { e.currentTarget.value = fi(n) }} />
+              <span>teams like it</span>
+            </label>
+            {teamsChips}
+            <span className={s.eq} aria-hidden>=</span> {fiEur(eurPerYear(f) * n)} <span className={s.per}>a year</span>
+          </p>
+        ) : null}
       </div>
       <p className={s.formulaNote}>
         {f.label === "sector estimate" ? "Sector estimate: no input comes from a company source. Change any number to yours." : <>Inputs partly from {chips}. Change any number to yours.</>}
@@ -166,7 +181,7 @@ export function Player({ lines, num }: { lines: ScriptLine[]; num: Record<string
 
 // Two sentences the person we met can pass up to the executive, with this page's link. Copy, or open the
 // viewer's own mail app with no recipient filled in: the viewer picks who gets it and presses send (CLAUDE.md rule 1).
-export function Forward({ reader, text, subject }: { reader: string; text: string; subject: string }) {
+export function Forward({ title, text, subject }: { title: string; text: string; subject: string }) {
   const [copied, setCopied] = useState(false)
   const [href, setHref] = useState("")
   useEffect(() => setHref(window.location.href.split("?")[0]), [])
@@ -176,7 +191,7 @@ export function Forward({ reader, text, subject }: { reader: string; text: strin
   }
   return (
     <section className={s.fwd} aria-labelledby="fwd">
-      <h2 id="fwd" className={s.h2}>Forward to your {reader}</h2>
+      <h2 id="fwd" className={s.h2}>{title}</h2>
       <p className={s.fwdText}>{text}</p>
       <p className={s.fwdRow}>
         <button className={s.fwdBtn} onClick={copy}>{copied ? "Copied" : "Copy text and link"}</button>

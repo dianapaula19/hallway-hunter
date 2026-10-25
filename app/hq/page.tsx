@@ -84,7 +84,7 @@ export default function HQ() {
   const withdrawn = b?.pages.filter((p) => p.status === "killed") ?? []
   const pageItem = (p: Board["pages"][number]) => (
     <li key={p.id}>
-      <a href={withBase(`/p/${p.slug}`)} {...newTab}>{p.company}</a>
+      <a href={withBase(`/p/${p.slug}?preview=1`)} {...newTab}>{p.company}</a>
       <span className={s.status} data-s={p.status}>{PAGE_STATUS[p.status] ?? p.status}</span>
       <span className={s.time}>{when(p.created_at)}</span>
     </li>
@@ -253,7 +253,7 @@ function ApprovalCard({ a, older = false }: { a: Board["approvals"][number]; old
     <div className={s.appr}>
       <p className={s.meta}>
         <span>Draft from {when(a.created_at)}</span>
-        <a href={withBase(`/p/${a.payload.page_slug}`)} {...newTab}>Open page</a>
+        <a href={withBase(`/p/${a.payload.page_slug}?preview=1`)} {...newTab}>Open page</a>
       </p>
       {blocked && <p className={s.hold}>On hold until the compliance check is clear: {a.compliance!.issues.join("; ")}.</p>}
 

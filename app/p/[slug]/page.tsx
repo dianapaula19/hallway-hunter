@@ -7,7 +7,8 @@ import { TERMS } from "@/lib/night/script.ts"
 import { hoursFromQuote } from "@/lib/night/hours.ts"
 import { contractsText, contractsWon } from "@/lib/night/scale.ts"
 import { Chips, Forward, FormulaRow, Player } from "./client.tsx"
-import { checkedLine, fi, fiText, headline, withoutEcho } from "./letter.ts"
+import { checkedLine, fi, fiEur, fiText, headline, withoutEcho } from "./letter.ts"
+import { eurPerYear } from "@/lib/night/formula.ts"
 import s from "./page.module.css"
 
 export const dynamic = "force-dynamic"
@@ -36,8 +37,10 @@ function Why({ why, name, num, lead }: { why: Claim; name: string; num: Record<s
 
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Europe/Helsinki" })
 
-export default async function DraftPage({ params }: { params: Promise<{ slug: string }> }) {
+// ?preview=1: opened from /hq. Only then does the page say it is an unreviewed draft; the company reader never sees that line.
+export default async function DraftPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ preview?: string }> }) {
   const { slug } = await params
+  const preview = (await searchParams).preview === "1"
   const page = get<Page>("SELECT * FROM pages WHERE slug = ?", slug)
   if (!page) notFound()
   if (page.status === "killed") return (
@@ -89,7 +92,9 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
   const ask = script.at(-1)?.text.includes("?") ? script.at(-1) : undefined
   // Lead with the question itself; the terms after it are small print, not a second paragraph to wade through.
   const q = ask ? ask.text.indexOf("?") + 1 : 0
-  const top = headline(opps[0])
+  // The hallway answer to "how many teams like yours?" scales the headline, cited to the note (only when its source is here).
+  const teams = letter?.teams && letter.teams.source_ids.every((id) => sources.has(id)) && showQuote ? letter.teams : null
+  const top = headline(opps[0], teams?.n)
   const pilotTeam = opps[0] ? `${fi(opps[0].formula.people)} ${opps[0].formula.people === 1 ? "person" : "people"}` : ""
   // The note's hours converted in code (hours.ts), shown only when card 1's formula uses exactly those numbers.
   const h = showQuote ? hoursFromQuote(lead.quote) : null
@@ -107,23 +112,41 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
   // No real inbox configured (the db.ts fallback is a localhost address): say what the button does instead of linking it.
   // The .env.example placeholder (your-team@velho.example) counts as unset: .example addresses never receive mail.
   const inbox = process.env.HH_OWN_INBOX && !/\.example$/i.test(process.env.HH_OWN_INBOX) ? process.env.HH_OWN_INBOX : null
-  const yes = inbox && `mailto:${inbox}?subject=${encodeURIComponent(`Yes: the one-page teardown for ${name}`)}&body=${encodeURIComponent(`Yes, please send the teardown.\n\n(Velho draft ${slug})`)}`
+  const askQ = ask ? ask.text.slice(0, q) : ""
+  const yes = inbox && `mailto:${inbox}?subject=${encodeURIComponent(`Yes, for ${name} (Velho draft)`)}&body=${encodeURIComponent(`Yes, please.\n\n${askQ}\n\n(Velho draft ${slug})`)}`
+  // The named sender, from the deployment's env. Unset: a placeholder role, never an invented Velho employee.
+  const sender = {
+    name: process.env.HH_CONSULTANT_NAME?.trim() || "Your Velho consultant",
+    role: process.env.HH_CONSULTANT_ROLE?.trim() || null,
+    phone: process.env.HH_CONSULTANT_PHONE?.trim() || null,
+  }
+  const f0 = opps[0]?.formula
+  const task = opps[0] ? opps[0].title.charAt(0).toLowerCase() + opps[0].title.slice(1).replace(/[.\s]+$/, "") : null
+  // One line that says what is folded: the formula in short, then what else is inside.
+  const workingSum = [
+    f0 && top ? `${fi(f0.hours_per_week * f0.people)} h a week × ${f0.weeks_per_year} weeks × €${fi(f0.hourly_cost_eur)} × ${fi(Math.round(f0.automation_share * 100))} % = ${fiEur(eurPerYear(f0))}${teams ? ` × ${teams.n} teams` : ""}` : null,
+    "sources",
+    opps.length ? "editable calculator" : null,
+    script.length ? "audio" : null,
+  ].filter(Boolean).join(" · ")
 
   return (
     <div className="paper"><div className={s.desk}>
       <article className={s.letter}>
         <Letterhead />
+        {preview && !approved && <p className={s.banner} role="note">Preview for Velho: draft, not yet reviewed by a person at Velho. The company reader does not see this line.</p>}
         {met && <p className={s.stub}>{met}</p>}
 
         <p className={s.eyebrow}>{reader ? `For the ${reader}, ${name}` : `Made for ${name}`}</p>
         {top ? (
           <>
             <h1 className={s.h1}>{top.h1.map((t) => <span key={t}>{t}</span>)}</h1>
-            {why && <Why why={why} name={name} num={num} lead />}
-            <p className={s.deck}>
-              <span className={s.pilotLabel}>The pilot</span>{" "}
-              {pilotTeam}, one task{top.h1.length === 1 && top.h1[0].startsWith(opps[0].title.slice(0, 12)) ? "" : `, ${opps[0].title.charAt(0).toLowerCase() + opps[0].title.slice(1)}`}{top.eur ? <>: {top.eur.charAt(0).toLowerCase() + top.eur.slice(1)} <span className={s.tag}>{top.label}</span></> : null}. It covers this team, not all of {name}; the working is below, change any number.
-            </p>
+            {top.eur && (
+              <p className={s.deck}>
+                {top.scaled ? top.eur : `${top.eur} for this team of ${pilotTeam}`} <span className={s.tag}>{top.label}</span>
+                {top.scaled && teams && <Chips ids={teams.source_ids} num={num} />}
+              </p>
+            )}
           </>
         ) : <h1 className={s.h1}>A first look at {name}</h1>}
 
@@ -133,6 +156,42 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
             <figcaption>{lead.role}, {name} {hallway && <Chips ids={[hallway.id]} num={num} />}</figcaption>
             {demoNote && <p className={s.demoNote}>Demo note, invented for this demo; nobody at {name} said this.</p>}
           </figure>
+        )}
+
+        {ask && (
+          <section className={s.ask} aria-labelledby="ask">
+            <h2 id="ask" className={s.h2}>One question</h2>
+            <p className={s.askText}>{fiText(askQ)}</p>
+            <p className={s.yesRow}>
+              {yes ? <>
+                <a className={s.yes} href={yes}>Reply yes</a>
+                <span className={s.yesNote}>Opens your own email app, addressed to Velho. Nothing is sent until you press send.</span>
+              </> : <span className={s.yesNote}>In use, a &ldquo;Reply yes&rdquo; button here opens a reply to your Velho consultant in your own email app. Nothing is sent from this page.</span>}
+            </p>
+            <p className={s.askTerms}>{fiText(ask.text.slice(q).trim()) || TERMS}</p>
+          </section>
+        )}
+
+        <div className={s.sign}>
+          <span className={s.signRole}>{sender.name}</span>
+          {sender.role && <span>{sender.role}, Velho</span>}
+          {sender.phone && <a className={s.tel} href={`tel:${sender.phone.replace(/[^\d+]/g, "")}`}>{sender.phone}</a>}
+          <span className={s.muted}>{approved
+            ? <>Drafted by Velho&apos;s AI analysts, checked by a person at Velho before you saw it.</>
+            : <>Drafted by Velho&apos;s AI analysts.</>}</span>
+        </div>
+
+        <details className={s.working}>
+          <summary>
+            <span className={s.workingH}>The working</span>
+            <span className={s.workingSum}>{workingSum}</span>
+          </summary>
+        {top && why && <Why why={why} name={name} num={num} lead />}
+        {top && (
+          <p className={s.deck}>
+            <span className={s.pilotLabel}>The pilot</span>{" "}
+            {pilotTeam}, one task, {task}: {fiEur(eurPerYear(f0!))} a year <span className={s.tag}>{top.label}</span>. It covers this team, not all of {name}{teams ? <>; {fiText(teams.text.charAt(0).toLowerCase() + teams.text.slice(1).replace(/\.$/, ""))} <Chips ids={teams.source_ids} num={num} /></> : null}. Change any number below.
+          </p>
         )}
 
         <section className={s.section} aria-labelledby="start">
@@ -152,7 +211,8 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
                 <h3 className={s.h3}>{opps.length > 1 && <span className={s.cardNum}>{i + 1}.</span>}{o.title}</h3>
                 <p className={s.claim}>{fiText(withoutEcho(o.claim.text, showQuote ? lead.quote : null))} <Chips ids={o.claim.source_ids} num={num} /></p>
                 {i === 0 && !top && why && <Why why={why} name={name} num={num} />}
-                <FormulaRow formula={o.formula} chips={<Chips ids={o.formula.input_source_ids} num={num} />} />
+                <FormulaRow formula={o.formula} chips={<Chips ids={o.formula.input_source_ids} num={num} />}
+                  teams={i === 0 ? teams?.n : null} teamsChips={i === 0 && teams ? <Chips ids={teams.source_ids} num={num} /> : null} />
                 {i === 0 && hours && <p className={s.hours}>Hours from the note, worked out: {fiText(hours.working)}{rounded}.</p>}
                 {i === 0 && (path || letter?.scale || won) && (
                   <p className={s.path}>
@@ -173,44 +233,21 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
           )}
         </section>
 
-        {ask && (
-          <section className={s.ask} aria-labelledby="ask">
-            <h2 id="ask" className={s.h2}>One question</h2>
-            <p className={s.askText}>{fiText(ask.text.slice(0, q))}</p>
-            <p className={s.askTerms}>{fiText(ask.text.slice(q).trim()) || TERMS}</p>
-            <p className={s.yesRow}>
-              {yes ? <>
-                <a className={s.yes} href={yes}>Reply yes</a>
-                <span className={s.yesNote}>Opens your own email app, addressed to Velho. Nothing is sent until you press send.</span>
-              </> : <span className={s.yesNote}>In use, a &ldquo;Reply yes&rdquo; button here opens a reply to your Velho consultant in your own email app. Nothing is sent from this page.</span>}
-            </p>
-          </section>
+        {/* For passing the page on to the person who owns the task (the page itself is addressed to the reader). */}
+        {fwdText && lead && task && (
+          <Forward title={`Forward to whoever owns ${task}`} text={fwdText} subject={`${opps[0].title} (Velho draft for ${name})`} />
         )}
-
-        {fwdText && lead && (
-          <Forward reader={reader ?? "COO"} text={fwdText} subject={`For the ${reader ?? "COO"}: ${opps[0]?.title ?? `a first look at ${name}`} (Velho draft)`} />
-        )}
-
-        <div className={s.sign}>
-          <span className={s.signRole}>Velho consultant</span>
-          <span className={s.muted}>{approved
-            ? <>Velho · drafted by Velho&apos;s AI analysts, checked by a person at Velho before you saw it.</>
-            : <>Velho · drafted by Velho&apos;s AI analysts. Draft, not yet reviewed by a person at Velho.</>}</span>
-        </div>
 
         {script.length > 0 && (
           <section className={s.ps} aria-labelledby="listen">
-            <h2 id="listen" className={s.h2}>P.S. Prefer to listen?</h2>
+            <h2 id="listen" className={s.h2}>Prefer to listen?</h2>
             <Player lines={script} num={num} />
           </section>
         )}
 
-        <footer className={s.foot}>
-          <p>
-            A <strong>Velho draft</strong>, prepared by Velho&apos;s AI analysts from the sources below.
-            Every statement links to its source. Every euro figure is an estimate: change any input and it recalculates.
-          </p>
-          {cited.length > 0 && (
+        {cited.length > 0 && (
+          <section className={s.ps} aria-labelledby="sources">
+            <h2 id="sources" className={s.h2}>Sources</h2>
             <ol className={s.sources}>
               {cited.map((c) => (
                 <li key={c.id}>
@@ -219,7 +256,15 @@ export default async function DraftPage({ params }: { params: Promise<{ slug: st
                 </li>
               ))}
             </ol>
-          )}
+          </section>
+        )}
+        </details>
+
+        <footer className={s.foot}>
+          <p>
+            A <strong>Velho draft</strong>, prepared by Velho&apos;s AI analysts. Every statement links to its source
+            (under &ldquo;The working&rdquo;). Every euro figure is an estimate: change any input and it recalculates.
+          </p>
           <p className={s.meta}>
             Private page, not indexed · {date}
             {prh && company.business_id && <> · Y-tunnus {company.business_id} <Chips ids={[prh.id]} num={num} /></>}
