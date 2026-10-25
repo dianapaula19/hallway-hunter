@@ -29,9 +29,9 @@ const SYSTEM = `You are one of Velho's AI analysts. A Velho consultant is about 
 Rules:
 - Use ONLY the sources listed (ids like src_xxx). Every claim's source_ids must be ids from that list. Never invent ids, URLs, numbers or names. Every word of a claim must be backed by the excerpt of a source it cites: no background knowledge.
 - what_they_do: <=20 words, in plain words a person would use. If a site source (the company's own website) is listed, take it from the site's own description of what they make or do, citing it; the trade register's industry code ("manufacture of grain mill products", "activities of head offices") is a last resort.
-- signals: exactly 2 recent, concrete facts (TED tenders/awards, site news, register changes), <=18 words each. A TED source counts only when "names_this_company" is true: an award to a subsidiary or a namesake abroad (e.g. "X Latvija SIA" for "Oy X Ab") is not this company's signal. Mention such an award at most once, saying whose it is, and never build an opener on it. If you cannot find 2 real signals, return fewer and set thin_data true. Do not pad.
-- openers: exactly 3 short questions (<=12 words) the consultant can ask about this company's own work, as a curious peer would; they may only refer to facts in your cited claims about this company itself. With thin data, ask open questions about their work instead of quizzing them on a tender.
-- dont_say: one thing to avoid (<=10 words). objection: the most likely pushback (<=18 words), citing the source that makes it likely.
+- signals: exactly 2 recent, concrete facts (TED tenders/awards, site news, register changes), <=18 words each. A TED source counts only when "names_this_company" is true. An award to a subsidiary or a namesake abroad (e.g. "X Latvija SIA" for "Oy X Ab") is NEVER a signal, not even with a caveat: it may appear only in dont_say. If you cannot find 2 real signals, return fewer and set thin_data true. Do not pad.
+- openers: exactly 3 short questions (<=14 words) the consultant can ask about this company's own work, as a curious peer would; they may only refer to facts in your cited claims about this company itself. Opener 3 names one likely manual process behind a cited signal (how its orders, call-offs, deliveries, reports or invoices are handled), e.g. "How do call-offs under the city water framework reach your order desk?". With thin data, opener 3 asks which recurring paperwork their own description implies (orders, service reports, deliveries).
+- dont_say: one thing to avoid (<=10 words). If a TED source has names_this_company false, dont_say is about it instead (<=16 words), e.g. "Don't credit them with the Riga cleaning award: their Latvian subsidiary won it." objection: the most likely pushback (<=18 words), citing the source that makes it likely.
 - Whole brief <=110 words. Plain English, no hype, no promises.
 - Answer immediately if the listed sources suffice; call a tool only if a key fact is missing.`
 
@@ -93,7 +93,7 @@ export async function quickScout(company: Company): Promise<ScoutResult> {
   let note: string | null = null
   if (!hasKey()) {
     mode = "evidence"; note = "no API key: brief built straight from registry/TED evidence"
-    brief = evidenceBrief(company, prh, [...ted, ...(site ? [site] : [])])
+    brief = evidenceBrief(company, prh, [...ted.filter((s) => !foreign.has(s.id)), ...(site ? [site] : [])])
   } else {
     try {
       const r = await runAgent<Brief>({
@@ -102,10 +102,11 @@ export async function quickScout(company: Company): Promise<ScoutResult> {
         prompt: `Company: ${company.name} (Y-tunnus ${company.business_id ?? "n/a"}, website ${company.website ?? "unknown"}).\nSources:\n${JSON.stringify(evidence.map((s) => (s.kind === "ted" ? { ...view(s), names_this_company: !foreign.has(s.id) } : view(s))), null, 1)}`,
       })
       runId = r.runId
-      brief = finalizeBrief(company.id, r.json!, fallbackWhat, r.runId)
+      // A subsidiary's or namesake's award never stands as a signal, whatever the model wrote (it belongs in dont_say).
+      brief = finalizeBrief(company.id, { ...r.json!, signals: (r.json!.signals ?? []).filter((c) => !c.source_ids?.some((id) => foreign.has(id))) }, fallbackWhat, r.runId)
     } catch (e) {
       mode = "evidence"; note = `model failed (${e instanceof Error ? e.message : e}); evidence-only brief`
-      brief = evidenceBrief(company, prh, [...ted, ...(site ? [site] : [])])
+      brief = evidenceBrief(company, prh, [...ted.filter((s) => !foreign.has(s.id)), ...(site ? [site] : [])])
     }
   }
   if (mode === "evidence") brief = finalizeBrief(company.id, brief, fallbackWhat)

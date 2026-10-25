@@ -41,7 +41,7 @@ export const MAX_SECS = 80
 
 // Every cited line the letter prints besides the cards: size fact, the why and pilot lines, old "checked" sentences, questions.
 export const letterClaims = (letter?: PageLetter | null) =>
-  [letter?.scale, letter?.why, letter?.path, letter?.checked, letter?.teams, ...(letter?.questions ?? [])].filter((c) => !!c)
+  [letter?.scale, letter?.why, letter?.insight, letter?.path, letter?.checked, letter?.teams, ...(letter?.questions ?? [])].filter((c) => !!c)
 
 export const isConfidential = (lead: Lead | null) => !!lead && CONFIDENTIAL.test(`${lead.quote} ${lead.pain} ${lead.next_step}`)
 
@@ -67,7 +67,7 @@ export function checkCompliance(input: {
   const issues: string[] = []
   const corpus = [companyName, lead?.role ?? "", ...sources.flatMap((s) => [s.title, s.excerpt])].join(" ").toLowerCase()
   const extra = letterClaims(letter)
-  const texts = [...opps.flatMap((o) => [o.title, o.claim.text]), ...lines.map((l) => l.text), ...extra.map((c) => c.text)]
+  const texts = [...opps.flatMap((o) => [o.title, o.claim.text]), ...lines.map((l) => l.text), ...extra.map((c) => c.text), ...(letter?.check ? [letter.check] : [])]
 
   for (const t of texts) {
     const p = t.match(PROMISE)
@@ -93,8 +93,10 @@ export function checkCompliance(input: {
   if (publicInStore && !hallwayCard && !cited.some((id) => kind.get(id) === "ted" || kind.get(id) === "site"))
     issues.push(`page cites no public source (TED or site) although the store holds ${publicInStore}`)
   // A cited public fact must not carry an uncited conclusion as if the source said it (the chips would make it look sourced).
-  const why = letter?.why?.text && uncitedInference(letter.why.text)
-  if (why) issues.push(`"Why it matters" states an uncited conclusion as fact: ${why.slice(0, 80)}`)
+  for (const c of [letter?.why, letter?.insight]) {
+    const why = c?.text && uncitedInference(c.text)
+    if (why) issues.push(`"Why it matters" states an uncited conclusion as fact: ${why.slice(0, 80)}`)
+  }
   for (const l of lines) {
     const x = l.source_ids.some((id) => kind.get(id) === "ted" || kind.get(id) === "site") && uncitedInference(l.text)
     if (x) issues.push(`audio line states an uncited conclusion as fact: ${x.slice(0, 80)}`)

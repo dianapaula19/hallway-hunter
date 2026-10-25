@@ -41,22 +41,20 @@ Rules:
   Do not multiply it by anything.
 - No promises ("guarantee", "will save", "we will", "we'll"). No personal names.
 - Never state consequences (errors, delays, downtime, unhappy customers) that no source states.
-- The last line is the ask: ONE question sentence of at most 50 words and nothing after it (the page prints the terms), a yes/no
-  the reader can answer with one word by reply. It offers a one-page teardown of card 1's named process (or of the first
-  question when there are no cards), written by "a Velho consultant" (exactly those words; the page shows their name), by Friday.
-  Say in plain words what is on that page, fitted to the process: where the work arrives, which fields or steps are typed by
-  hand, what software would take over (an AI reader, a form), and the hours it gives back.
-  The teardown goes to the reader ("send you"). When the reader below is an executive and the person met in the hallway is
-  someone else, say it is built from what their team already told us (do not single out the person met), so nobody on the
-  reader's team has to do anything, and that it is a five-minute read. Never ask for a meeting, a call, data or staff time.
-  When a company-level "why" fact is listed below, you may open with a short clause about it, citing it. Naming the role met
-  or repeating a detail of the quote means citing the hallway source. No digits unless the line cites a source that has them.
-  Example: "Shall a Velho consultant send you a one-page teardown by Friday, a five-minute read built from what your team
-  already told us: where the utilities' PDF orders arrive, which fields get retyped into SAP, and what an AI reader would take over?"`
+- The last line is the ask: ONE question sentence of AT MOST 20 words, a yes/no the reader can answer with one word by
+  reply, then one short sentence starting "On it:" (at most 20 words) saying what is on that page, fitted to the process:
+  where the work arrives, which fields or steps are typed by hand, what software would take over (an AI reader, a form).
+  Nothing after it (the page prints the terms). The question offers a one-page teardown of card 1's named process (or of
+  the first question when there are no cards), sent by "a Velho consultant" (exactly those words; the page shows their
+  name), by Friday. The teardown goes to the reader ("send you"). Never ask for a meeting, a call, data or staff time.
+  Naming the role met or repeating a detail of the quote (a system, a document type) means citing the hallway source. No
+  digits unless the line cites a source that has them.
+  Example: "Shall a Velho consultant send you a one-page teardown of the utilities' PDF orders by Friday? On it: where they
+  arrive, which fields get retyped into SAP, what an AI reader would take over."`
 
-export const CLOSE = "Shall a Velho consultant send you a one-page teardown of that first task by Friday: where the work arrives, what is typed by hand, what software would take over, and the hours it gives back?"
+export const CLOSE = "Shall a Velho consultant send you a one-page teardown of that first task by Friday? On it: where the work arrives, what is typed by hand, what software would take over."
 // The fixed terms of the offer, printed on the page under the question instead of being read aloud.
-export const TERMS = "It needs nothing from you or your team: no data, no call. A yes by reply is enough."
+export const TERMS = "It needs nothing from you or your team: no data, no call."
 export const MAX_WORDS = 170 // ~65 s at the player's 2.6 words a second; compliance fails a script over 80 s
 
 const FILLER = /(?:^|(?<=[.!?]\s))[^.!?]*\b(?:(?:we'?re|we are|this is)\s+velho'?s ai analysts|(?:this|the|our) (?:briefing|draft) is about)\b[^.!?]*[.!?]\s*/gi
@@ -73,8 +71,11 @@ export function fitScript(lines: ScriptLine[]): ScriptLine[] {
   if (out.length && !/velho'?s ai analysts/i.test(out[0].text)) out[0] = { ...out[0], text: `${LABEL} ${out[0].text}` }
   const last = out.at(-1)
   if (last && out.length > 1 && last.text.includes("?")) {
-    const q = last.text.slice(0, last.text.indexOf("?") + 1)
-    out[out.length - 1] = { ...last, text: q.slice(Math.max(0, q.search(/[^.!?]*\?$/))).trim() }
+    const i = last.text.indexOf("?") + 1
+    const q = last.text.slice(0, i)
+    // The question sentence, plus the "On it: …" sentence right after it (the page prints that under the question).
+    const onIt = last.text.slice(i).trim().match(/^On it:[^.!?]*[.!?]?/)?.[0] ?? ""
+    out[out.length - 1] = { ...last, text: `${q.slice(Math.max(0, q.search(/[^.!?]*\?$/))).trim()}${onIt ? ` ${onIt}` : ""}` }
   }
   while (wordCount(out) > MAX_WORDS) {
     const mid = out.map((l, i) => ({ l, i })).filter(({ l, i }) => i > 0 && i < out.length - 1 && l.host === "B")
@@ -90,7 +91,7 @@ export const wordCount = (lines: ScriptLine[]) => lines.reduce((n, l) => n + l.t
 export async function writeScript(
   ctx: NightContext, pageId: string, opps: DraftOpportunity[],
   rewrite?: { previous: ScriptLine[]; score: SkepticScore },
-  extra: { recipient?: string | null; questions?: Claim[]; why?: Claim | null; path?: Claim | null; teams?: (Claim & { n: number }) | null } = {},
+  extra: { recipient?: string | null; questions?: Claim[]; why?: Claim | null; insight?: Claim | null; path?: Claim | null; teams?: (Claim & { n: number }) | null } = {},
 ): Promise<{ runId: string; lines: ScriptLine[]; dropped: ScriptLine[] }> {
   const hallway = ctx.sources.find((s) => s.kind === "hallway" && s.lead_id === ctx.lead?.id)
   const cards = opps.map((o, i) =>
@@ -102,6 +103,7 @@ export async function writeScript(
     `Opportunity cards on the page:\n${cards || "(none: thin data)"}`,
     opps[0] && !extra.teams && eurPerYear(opps[0].formula) < FIRST_STEP_EUR ? `Card 1 is a FIRST STEP: ${opps[0].formula.people} people, one team, ${fmtEur(eurPerYear(opps[0].formula))} a year.` : "",
     extra.why ? `Why it matters at company level (printed under card 1): ${extra.why.text} [${extra.why.source_ids.join(", ")}]` : "",
+    !extra.why && extra.insight ? `Why it matters at company level (printed at the top): ${extra.insight.text} [${extra.insight.source_ids.join(", ")}] Give it one short line of its own right after the estimate, in fresh words, citing it.` : "",
     extra.path ? `Pilot path (printed under card 1): ${extra.path.text} [${extra.path.source_ids.join(", ")}]` : "",
     extra.teams && opps[0] ? `Headline scale (printed at the top): ${extra.teams.text} So card 1's ${fmtEur(eurPerYear(opps[0].formula))} for this team becomes about ${fmtEur(eurPerYear(opps[0].formula) * extra.teams.n)} a year across them, an estimate [${extra.teams.source_ids.join(", ")}]. Say that total once, right after card 1's estimate, citing the hallway source.` : "",
     extra.questions?.length ? `Questions on the page ("What we'd ask you"):\n${extra.questions.map((q) => `- ${q.text} [${q.source_ids.join(", ")}]`).join("\n")}` : "",
@@ -135,12 +137,13 @@ if (import.meta.main) {
     L("A", "“Dealers send PDFs.” A Head of Parts said that to a Velho consultant in a conference hallway."),
     L("B", "We're Velho's AI analysts. This briefing is about that morning routine."),
     L("B", "We're Velho's AI analysts. Software reads each order and fills the ERP record."),
-    L("A", "Shall a Velho consultant send you a free one-page teardown, within a week? It needs no data from you."),
+    L("A", "Right. Shall a Velho consultant send you a one-page teardown by Friday? On it: where orders arrive. It needs no data."),
   ])
   assert.match(out[0].text, /^Velho's AI analysts here/)
   assert.equal(out.length, 3) // the pure-filler line is gone
   assert.equal(out[1].text, "Software reads each order and fills the ERP record.")
-  assert.equal(out[2].text, "Shall a Velho consultant send you a free one-page teardown, within a week?")
+  assert.equal(out[2].text, "Shall a Velho consultant send you a one-page teardown by Friday? On it: where orders arrive.")
+  assert.ok(CLOSE.slice(0, CLOSE.indexOf("?")).split(/\s+/).length <= 20)
   const long = fitScript([L("A", "Velho's AI analysts here. Start."), ...Array.from({ length: 6 }, (_, i) => L(i % 2 ? "A" : "B", "word ".repeat(40).trim() + ".")), L("A", "Yes or no?")])
   assert.ok(wordCount(long) <= MAX_WORDS || long.filter((l) => l.host === "B").length === 0)
   assert.equal(long.at(-1)!.text, "Yes or no?")

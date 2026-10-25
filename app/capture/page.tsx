@@ -64,6 +64,7 @@ export default function CapturePage() {
   const [noteMsg, setNoteMsg] = useState<string | null>(null)
   const rec = useRef<SR | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const teamsRef = useRef<HTMLInputElement>(null)
   // One request in flight; leaving the page (or starting a new lookup) cancels it.
   const ctl = useRef<AbortController | null>(null)
   const fresh = () => { ctl.current?.abort(); ctl.current = new AbortController(); return ctl.current.signal }
@@ -141,7 +142,8 @@ export default function CapturePage() {
     r.lang = lang; r.interimResults = true; r.continuous = true
     const base = transcript ? transcript.trimEnd() + " " : ""
     r.onresult = (e) => setTranscript(base + Array.from(e.results).map((x) => x[0].transcript).join(" "))
-    r.onend = () => setListening(false)
+    // Recording done: the page's scale question is next, so it gets the focus (typing a note never loses focus to it).
+    r.onend = () => { setListening(false); setTimeout(() => teamsRef.current?.focus(), 0) }
     r.onerror = (e) => { if (e.error !== "aborted") setNoteMsg(MIC[e.error] ?? `The microphone stopped (${e.error}). Type the note below instead.`); setListening(false) }
     rec.current = r; r.start(); setListening(true)
   }
@@ -314,11 +316,13 @@ export default function CapturePage() {
               </div>
               {noteMsg && <p className={s.error} role="alert">{noteMsg}</p>}
               <textarea className={s.input} value={transcript} onChange={(e) => setTranscript(e.target.value)} rows={4} placeholder="Transcript appears here. Edit before saving." aria-label="Voice note transcript" />
+              {transcript.trim() && (
+                <label className={s.teams}>
+                  <span><b>Ask them: how many teams work like this?</b> <small>Their answer scales the page&apos;s headline to the whole company, cited to this note. Leave empty if they don&apos;t know.</small></span>
+                  <input ref={teamsRef} className={s.input} value={teams} onChange={(e) => setTeams(e.target.value.replace(/[^\d]/g, "").slice(0, 4))} inputMode="numeric" placeholder="e.g. 6" autoComplete="off" aria-label="How many teams work like this?" />
+                </label>
+              )}
               <input className={s.input} value={role} onChange={(e) => setRole(e.target.value)} placeholder="Their job title (from the badge, or ask)" aria-label="Their job title" autoComplete="off" />
-              <label className={s.teams}>
-                <span>How many teams like theirs across the company do this task? <small>Optional: ask them. Their answer scales the page&apos;s headline, cited to this note.</small></span>
-                <input className={s.input} value={teams} onChange={(e) => setTeams(e.target.value.replace(/[^\d]/g, "").slice(0, 4))} inputMode="numeric" placeholder="e.g. 6" autoComplete="off" />
-              </label>
               <label className={s.demoNote}>
                 <input type="checkbox" checked={demoNote} onChange={(e) => setDemoNote(e.target.checked)} />
                 <span>Demo note: invented for a demo, and labelled that way on every page. Untick only for a real conversation.</span>

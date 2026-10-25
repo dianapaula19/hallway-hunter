@@ -5,7 +5,7 @@ import { ASSUME, isConfidential } from "@/lib/night/compliance.ts"
 import type { Claim, Company, Lead, Opportunity, Page, Source } from "@/lib/types.ts"
 import { TERMS } from "@/lib/night/script.ts"
 import { Chips, Forward, FormulaRow, Player } from "./client.tsx"
-import { checkedLine, fi, fiEur, fiText, headline, withoutEcho } from "./letter.ts"
+import { askParts, checkedLine, fi, fiEur, fiText, headline, withoutEcho } from "./letter.ts"
 import { eurPerYear } from "@/lib/night/formula.ts"
 import s from "./page.module.css"
 
@@ -26,7 +26,7 @@ function Why({ why, name, num, lead }: { why: Claim; name: string; num: Record<s
   const [fact, guess] = why.text.split(ASSUME)
   return (
     <p className={lead ? `${s.why} ${s.whyLead}` : s.why}>
-      <span className={s.whyLabel}>Why it matters at {name}</span>
+      <span className={s.whyLabel}>Why this matters at {name}</span>
       {fiText(fact.trim())} <Chips ids={why.source_ids} num={num} />
       {guess && <span className={s.assume}> {ASSUME}{fiText(guess)}</span>}
     </p>
@@ -68,7 +68,10 @@ export default async function DraftPage({ params, searchParams }: { params: Prom
   // cites public evidence; a "we found nothing public" sentence is not a reason and stays out of the card.
   const why = letter?.why ?? (isPublic(letter?.checked) && !/found nothing/i.test(letter!.checked!.text) ? letter!.checked : null)
   const path = letter?.path ?? null
-  const checked = [letter?.scale, why, path].filter((c): c is Claim => !!c)
+  // Above the fold: one company-specific public fact the reader did not say (round 8), or what we'd check first.
+  const top1 = why ?? letter?.insight ?? null
+  const checkFirst = top1 ? null : letter?.check ?? null
+  const checked = [top1, letter?.scale, path].filter((c): c is Claim => !!c)
   // Everything the page rests on, by kind and date, cited or not (a hallway source from another lead is not this page's).
   const checkedItems = checkedLine([...sources.values()].filter((x) => x.kind !== "hallway" || x.id === hallway?.id))
   const questions = letter?.questions ?? []
@@ -86,8 +89,10 @@ export default async function DraftPage({ params, searchParams }: { params: Prom
   const date = new Date(page.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Helsinki" })
   // The script's closing question is the page's one ask; show it on its own, not only inside the audio.
   const ask = script.at(-1)?.text.includes("?") ? script.at(-1) : undefined
-  // Lead with the question itself; the terms after it are small print, not a second paragraph to wade through.
-  const q = ask ? ask.text.indexOf("?") + 1 : 0
+  // The script says "a Velho consultant" (no personal names in model output); the printed question names the sender.
+  // At most ~20 words and "Reply yes is enough."; what the teardown holds and the terms are small print under it.
+  const askP = ask ? askParts(ask.text, process.env.HH_CONSULTANT_NAME?.trim() || "a Velho consultant") : null
+  const askQ = askP?.q ?? ""
   // The hallway answer to "how many teams like yours?" scales the headline, cited to the note (only when its source is here).
   const teams = letter?.teams && letter.teams.source_ids.every((id) => sources.has(id)) && showQuote ? letter.teams : null
   const top = headline(opps[0], teams?.n)
@@ -96,15 +101,13 @@ export default async function DraftPage({ params, searchParams }: { params: Prom
   const fwdFirst = opps[0] && top
     ? `${fiText(opps[0].claim.text.split(/(?<=[.!?])\s/)[0])} ${top.eur ?? top.h1.at(-1)!.replace(/\.$/, "")} (${top.label}; the working is on the page).`
     : questions[0] ? `What the public record shows: ${fiText(questions[0].text)}` : null
-  const fwdText = fwdFirst && ask ? [why && fiText(why.text), fwdFirst, fiText(ask.text.slice(0, q))].filter(Boolean).join(" ") : null
+  const fwdText = fwdFirst && ask ? [top1 && fiText(top1.text), fwdFirst, fiText(askQ)].filter(Boolean).join(" ") : null
   // We store no event name, only when the lead was captured.
   const met = lead ? `Met in a conference hallway, ${day(lead.created_at)}` : null
   // Reply yes opens the viewer's own mail app, addressed to our inbox. The app sends nothing (CLAUDE.md rule 1).
   // No real inbox configured (the db.ts fallback is a localhost address): say what the button does instead of linking it.
   // The .env.example placeholder (your-team@velho.example) counts as unset: .example addresses never receive mail.
   const inbox = process.env.HH_OWN_INBOX && !/\.example$/i.test(process.env.HH_OWN_INBOX) ? process.env.HH_OWN_INBOX : null
-  // The script says "a Velho consultant" (no personal names in model output); the printed question names the sender.
-  const askQ = ask ? ask.text.slice(0, q).replace(/\ba Velho consultant\b/, process.env.HH_CONSULTANT_NAME?.trim() || "a Velho consultant") : ""
   const yes = ask && inbox && `mailto:${inbox}?subject=${encodeURIComponent(`Yes, for ${name} (Velho draft)`)}&body=${encodeURIComponent(`Yes, please.\n\n${askQ}\n\n(Velho draft ${slug})`)}`
   // The named sender, from the deployment's env. Unset: a placeholder role, never an invented Velho employee.
   const sender = {
@@ -126,7 +129,7 @@ export default async function DraftPage({ params, searchParams }: { params: Prom
     <div className="paper"><div className={s.desk}>
       <article className={s.letter}>
         <Letterhead />
-        {preview && !approved && <p className={s.banner} role="note">Preview for Velho: draft, not yet reviewed by a person at Velho. The company reader does not see this line.</p>}
+        {preview && (!approved || !inbox) && <p className={s.banner} role="note">Preview for Velho: {!approved && "draft, not yet reviewed by a person at Velho. "}{!inbox && "No Reply yes button (HH_OWN_INBOX is not set). "}The company reader does not see this line.</p>}
         {met && <p className={s.stub}>{met}</p>}
 
         <p className={s.eyebrow}>{reader ? `For the ${reader}, ${name}` : `Made for ${name}`}</p>
@@ -141,6 +144,8 @@ export default async function DraftPage({ params, searchParams }: { params: Prom
             )}
           </>
         ) : <h1 className={s.h1}>A first look at {name}</h1>}
+        {top1 && <Why why={top1} name={name} num={num} lead />}
+        {checkFirst && <p className={`${s.why} ${s.whyLead}`}><span className={s.whyLabel}>What we&apos;d check first</span>{fiText(checkFirst.charAt(0).toUpperCase() + checkFirst.slice(1))}.</p>}
 
         {showQuote && (
           <figure className={s.quote}>
@@ -154,19 +159,18 @@ export default async function DraftPage({ params, searchParams }: { params: Prom
           <section className={s.ask} aria-labelledby="ask">
             <h2 id="ask" className={s.h2}>One question</h2>
             <p className={s.askText}>{fiText(askQ)}</p>
-            <p className={s.yesRow}>
-              {yes ? <>
+            {yes && (
+              <p className={s.yesRow}>
                 <a className={s.yes} href={yes}>Reply yes</a>
                 <span className={s.yesNote}>Opens your own email app, addressed to Velho. Nothing is sent until you press send.</span>
-              </> : <span className={s.yesNote}>In use, a &ldquo;Reply yes&rdquo; button here opens a reply to your Velho consultant in your own email app. Nothing is sent from this page.</span>}
-            </p>
-            <p className={s.askTerms}>{fiText(ask.text.slice(q).trim()) || TERMS}</p>
+              </p>
+            )}
+            <p className={s.askTerms}>On it: {fiText(askP!.onIt)}. {TERMS} {ask.source_ids.length > 0 && <Chips ids={ask.source_ids} num={num} />}</p>
           </section>
         )}
 
         <div className={s.sign}>
-          <span className={s.signRole}>{sender.name}</span>
-          {sender.role && <span>{sender.role}, Velho</span>}
+          <span className={s.signRole}>{sender.name}{sender.role && ` · ${sender.role}`}</span>
           {sender.phone && <a className={s.tel} href={`tel:${sender.phone.replace(/[^\d+]/g, "")}`}>{sender.phone}</a>}
           <span className={s.muted}>{approved
             ? <>Drafted by Velho&apos;s AI analysts, checked by a person at Velho before you saw it.</>
@@ -178,7 +182,6 @@ export default async function DraftPage({ params, searchParams }: { params: Prom
             <span className={s.workingH}>The working</span>
             <span className={s.workingSum}>{workingSum}</span>
           </summary>
-        {top && why && <Why why={why} name={name} num={num} lead />}
         {top && (
           <p className={s.deck}>
             <span className={s.pilotLabel}>The pilot</span>{" "}
@@ -202,7 +205,6 @@ export default async function DraftPage({ params, searchParams }: { params: Prom
               <li key={o.id} className={s.card}>
                 <h3 className={s.h3}>{opps.length > 1 && <span className={s.cardNum}>{i + 1}.</span>}{o.title}</h3>
                 <p className={s.claim}>{fiText(withoutEcho(o.claim.text, showQuote ? lead.quote : null))} <Chips ids={o.claim.source_ids} num={num} /></p>
-                {i === 0 && !top && why && <Why why={why} name={name} num={num} />}
                 <FormulaRow formula={o.formula} chips={<Chips ids={o.formula.input_source_ids} num={num} />}
                   teams={i === 0 ? teams?.n : null} teamsChips={i === 0 && teams ? <Chips ids={teams.source_ids} num={num} /> : null} />
                 {i === 0 && (path || letter?.scale) && (
@@ -218,7 +220,7 @@ export default async function DraftPage({ params, searchParams }: { params: Prom
           {checkedItems.length > 0 && (
             <p className={s.checked}>
               <span className={s.checkedH}>What we checked</span>
-              {checkedItems.join(" · ")}.{opps.length > 0 && !why && " Nothing public we found ties to this process yet."}
+              {checkedItems.join(" · ")}.
             </p>
           )}
         </section>
