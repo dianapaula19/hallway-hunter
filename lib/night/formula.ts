@@ -23,6 +23,10 @@ export function eurPerYear(f: Pick<EuroFormula, FormulaKey>): number {
   return f.hours_per_week * f.people * f.weeks_per_year * f.hourly_cost_eur * f.automation_share
 }
 
+// One team's figure below this is "a first step", not a headline: readers at Ponsse, Mipro, Kemira and Valmet all called
+// €5-37k trivial at their size (round 7). The page then leads with the people and hours, and the script says "first step".
+export const FIRST_STEP_EUR = 100_000
+
 // Clamp model output into sane ranges and set the label from the sources that survived.
 export function normalizeFormula(raw: Partial<EuroFormula>, known: Set<string>): EuroFormula {
   const ids = (raw.input_source_ids ?? []).filter((id) => known.has(id))

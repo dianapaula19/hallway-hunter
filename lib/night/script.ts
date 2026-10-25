@@ -3,7 +3,7 @@ import { runAgent } from "../claude.ts"
 import type { Claim, ScriptLine, SkepticScore } from "../types.ts"
 import type { DraftOpportunity, NightContext } from "./researcher.ts"
 import { sourceList } from "./researcher.ts"
-import { fmtEur, eurPerYear } from "./formula.ts"
+import { FIRST_STEP_EUR, fmtEur, eurPerYear } from "./formula.ts"
 import { markInference } from "./compliance.ts"
 import { sanitizeScript } from "./sanitize.ts"
 
@@ -28,29 +28,35 @@ Rules:
   With no hallway quote, line 1 states the strongest cited public fact about a recurring process, citing it.
 - Lead with the card closest to the hallway pain and spend most of the script on it: what the task is today, what changes (name the mechanism plainly, e.g. "a tablet form that fills the CRM record"), the estimate. Never undercut the case ("small next to the cost of", "the euro figure is the smaller part"). Mention other cards (if any) in one line each. Never mention cards that are not on the page. Be confident and concrete: the page already shows every caveat and the editable formula, so say "estimate" once per euro figure and do not apologise, say "thin data", or list what you left out.
 - The listener has the page open. Never read a card, the "why" line or the question aloud word for word: say each in fresh,
-  shorter spoken words (line 1's hallway quote is the one verbatim line). Give the company-level "why" (if listed below) one
-  short line of its own, citing its source, right after the estimate: it is the reason an executive cares. Keep its "if" or
-  "our assumption" wording: the tie from the public fact to the process is not in any source, so never say it as fact.
+  shorter spoken words (line 1's hallway quote is the one verbatim line). If a company-level "why" is listed below, give it one
+  short line of its own, citing its source, right after the estimate. Without one, say nothing about why now.
 - With no cards, spend the script on the questions listed below: what the public record shows and the one thing we would ask.
 - Cite a public source only where it adds a fact the reader would not already know (e.g. a tender a card is built on). Never add a line just to cite something, never describe the company to its own management, and never say what you "checked". Any line with a number, €, % or a proper noun other than the company name MUST cite source ids that support it.
 - A line that repeats a detail from the hallway quote (a system name, a task) cites the hallway source id too, even if it is a question.
 - Never invent a source id. Lines without facts (transitions, questions) may have empty source_ids, so they must contain no digits: write "twenty minutes", not "20 minutes".
-- Any euro amount is called an "estimate" and is exactly the card's figure (do not recompute it). Say which inputs are assumed, in one short phrase.
-  Do no arithmetic aloud: say the time today in one phrase (the team's hours per week), the estimate, and that the formula is on the page to change.
+- Any euro amount is called an "estimate" and is exactly the card's figure (do not recompute it). Say which inputs are assumed, in one short phrase; inputs taken from the hallway note (its hours, its headcount) are not assumed.
+  Do no arithmetic aloud: say the time today in one phrase, the estimate, and that the formula is on the page to change.
+- When card 1 is marked FIRST STEP below, lead with the people and the time in plain words ("two people, three hours every
+  morning") and say the euro figure as a first step ("a first step, about €18 600 a year, an estimate"), never as the big number.
+  Do not multiply it by anything.
 - No promises ("guarantee", "will save", "we will", "we'll"). No personal names.
 - Never state consequences (errors, delays, downtime, unhappy customers) that no source states.
-- The last line is the ask: ONE question sentence of at most 35 words and nothing after it (the page prints the terms), a yes/no the reader can answer in one reply.
-  Anchor it on this page's own cited signal: when a company-level "why" fact is listed below (a framework, award or contract with
-  its date), open the question with a short clause about that fact, e.g. "Before the Düsseldorf framework starts in 2027, shall a
-  Velho consultant map how emailed PDF orders reach SAP today, on one free page within a week?" and cite the why's public source
-  and the hallway source. Without a why fact, anchor it on the first card's evidence (or the first question when there are no cards).
-  A named author ("a Velho consultant") offers something free, one page, within a week, about that named process: a map of the
-  steps today, a single-entry version with its rough cost, or a teardown. Pick what fits; do not default to the same phrasing.
-  Address the reader directly ("you"); never ask them to involve staff. No digits unless the line cites a source that has them.`
+- The last line is the ask: ONE question sentence of at most 50 words and nothing after it (the page prints the terms), a yes/no
+  the reader can answer with one word by reply. It offers a one-page teardown of card 1's named process (or of the first
+  question when there are no cards), written by "a Velho consultant" (exactly those words; the page shows their name), by Friday.
+  Say in plain words what is on that page, fitted to the process: where the work arrives, which fields or steps are typed by
+  hand, what software would take over (an AI reader, a form), and the hours it gives back.
+  The teardown goes to the reader ("send you"). When the reader below is an executive and the person met in the hallway is
+  someone else, say it is built from what their team already told us (do not single out the person met), so nobody on the
+  reader's team has to do anything, and that it is a five-minute read. Never ask for a meeting, a call, data or staff time.
+  When a company-level "why" fact is listed below, you may open with a short clause about it, citing it. Naming the role met
+  or repeating a detail of the quote means citing the hallway source. No digits unless the line cites a source that has them.
+  Example: "Shall a Velho consultant send you a one-page teardown by Friday, a five-minute read built from what your team
+  already told us: where the utilities' PDF orders arrive, which fields get retyped into SAP, and what an AI reader would take over?"`
 
-export const CLOSE = "Shall a Velho consultant send you a free one-page teardown of that first task, with a single-entry version and its rough cost, within a week?"
+export const CLOSE = "Shall a Velho consultant send you a one-page teardown of that first task by Friday: where the work arrives, what is typed by hand, what software would take over, and the hours it gives back?"
 // The fixed terms of the offer, printed on the page under the question instead of being read aloud.
-export const TERMS = "It needs no data from you and no call; a yes by reply is enough."
+export const TERMS = "It needs nothing from you or your team: no data, no call. A yes by reply is enough."
 export const MAX_WORDS = 170 // ~65 s at the player's 2.6 words a second; compliance fails a script over 80 s
 
 const FILLER = /(?:^|(?<=[.!?]\s))[^.!?]*\b(?:(?:we'?re|we are|this is)\s+velho'?s ai analysts|(?:this|the|our) (?:briefing|draft) is about)\b[^.!?]*[.!?]\s*/gi
@@ -92,8 +98,9 @@ export async function writeScript(
   const prompt = [
     `Company: ${ctx.company.name}`,
     ctx.lead && hallway ? `Hallway quote (from a ${ctx.lead.role}), source ${hallway.id}: "${ctx.lead.quote}"` : "No hallway quote: open with the strongest cited signal instead.",
-    extra.recipient ? `The reader is their ${extra.recipient}; the person met in the hallway forwards it.` : "",
+    extra.recipient ? `The reader is their ${extra.recipient}; the person met in the hallway${ctx.lead ? `, their ${ctx.lead.role},` : ""} forwards it.` : "",
     `Opportunity cards on the page:\n${cards || "(none: thin data)"}`,
+    opps[0] && !extra.teams && eurPerYear(opps[0].formula) < FIRST_STEP_EUR ? `Card 1 is a FIRST STEP: ${opps[0].formula.people} people, one team, ${fmtEur(eurPerYear(opps[0].formula))} a year.` : "",
     extra.why ? `Why it matters at company level (printed under card 1): ${extra.why.text} [${extra.why.source_ids.join(", ")}]` : "",
     extra.path ? `Pilot path (printed under card 1): ${extra.path.text} [${extra.path.source_ids.join(", ")}]` : "",
     extra.teams && opps[0] ? `Headline scale (printed at the top): ${extra.teams.text} So card 1's ${fmtEur(eurPerYear(opps[0].formula))} for this team becomes about ${fmtEur(eurPerYear(opps[0].formula) * extra.teams.n)} a year across them, an estimate [${extra.teams.source_ids.join(", ")}]. Say that total once, right after card 1's estimate, citing the hallway source.` : "",
