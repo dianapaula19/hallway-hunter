@@ -54,10 +54,25 @@ export function headline(top: Opportunity | undefined, teams?: number | null): {
   if (assumed >= 2 || f.label === "sector estimate") return { h1: [title], eur: `About ${fiEur(eurN)} a year to win back`, label: f.label }
   if (teams && teams >= 2) return {
     h1: [`About ${fiEur(eurN * teams)} a year to win back,`, `across about ${teams} teams like this one.`],
-    eur: `${fi(hours)} h a week by hand in this team: ${fiEur(eurN)} a year · about ${teams} teams like it → ~${fiEur(eurN * teams)}`, label: f.label, scaled: true,
+    eur: `The pilot: this team of ${fi(f.people)}, ${fi(hours)} h a week by hand, ${fiEur(eurN)} a year · × about ${teams} teams like it`, label: f.label, scaled: true,
   }
   if (eurN < FIRST_STEP_EUR) return { h1: [`${who(f.people)}, ${fi(hours)} hours a week:`, title.charAt(0).toLowerCase() + title.slice(1)], eur: `A first step worth about ${fiEur(eurN)} a year`, label: f.label }
   return { h1: [`${fi(hours)} hours a week by hand.`, `About ${fiEur(eurN)} a year to win back.`], eur: null, label: f.label }
+}
+
+// The one question as printed: at most ~20 words, then "Reply yes is enough." What the teardown holds goes in a small line
+// under it: the script's "On it: …" sentence, or (pages from before round 8) the list after the colon of a long question.
+// A question over 22 words (older pages) is replaced by the short form, so every page asks the same light way.
+// Fallback contents (script.ts stays out of this file: it imports the model client, and letter.ts reaches the browser).
+export const ON_IT = "where the work arrives, what is typed by hand, what software would take over, and the hours it gives back"
+export function askParts(text: string, sender: string): { q: string; onIt: string } {
+  const i = text.indexOf("?") + 1
+  const q0 = text.slice(0, i).replace(/\ba Velho consultant\b/, sender).trim()
+  const on = text.slice(i).trim().match(/^On it:\s*([^.!?]*)/)?.[1]?.trim()
+  const long = q0.split(/\s+/).length > 22
+  const colon = q0.lastIndexOf(":")
+  const listed = on || (long && colon > 0 ? q0.slice(colon + 1).replace(/[?\s]+$/, "").trim() : "")
+  return { q: `${long ? `Shall ${sender} send you a one-page teardown of this by Friday?` : q0} Reply yes is enough.`, onIt: listed || ON_IT }
 }
 
 // "What we checked", deterministic: every source behind the page by kind, with dates (TED by publication month,
@@ -111,7 +126,13 @@ if (import.meta.main) {
   assert.equal(headline(opp("Forty people retype.", 7.5, 40))!.eur, null)
   const scaled = headline(opp("Three of us retype.", 10, 3), 6)!
   assert.deepEqual(scaled.h1, [`About ${fiEur(34500 * 6)} a year to win back,`, "across about 6 teams like this one."])
-  assert.equal(scaled.eur, `30 h a week by hand in this team: ${fiEur(34500)} a year · about 6 teams like it → ~${fiEur(34500 * 6)}`)
+  assert.equal(scaled.eur, `The pilot: this team of 3, 30 h a week by hand, ${fiEur(34500)} a year · × about 6 teams like it`)
+  const oldAsk = "Shall a Velho consultant send you a one-page teardown by Friday, built from what your Head of Spare Parts Logistics already told us: where the dealer PDF orders arrive, which fields get retyped into the ERP, and what an AI reader would take over?"
+  assert.deepEqual(askParts(oldAsk, "Diana"), { q: "Shall Diana send you a one-page teardown of this by Friday? Reply yes is enough.", onIt: "where the dealer PDF orders arrive, which fields get retyped into the ERP, and what an AI reader would take over" })
+  const newAsk = askParts("Shall a Velho consultant send you a one-page teardown of the PDF orders by Friday? On it: where they arrive, what gets retyped.", "a Velho consultant")
+  assert.deepEqual(newAsk, { q: "Shall a Velho consultant send you a one-page teardown of the PDF orders by Friday? Reply yes is enough.", onIt: "where they arrive, what gets retyped" })
+  assert.ok(newAsk.q.split(/\s+/).length <= 22)
+  assert.equal(askParts("Shall a Velho consultant send you a teardown?", "X").onIt, ON_IT)
   assert.deepEqual(headline(opp("Three of us retype.", 10, 3), null)!.h1, ["Three people, 30 hours a week:", "mill visit reports written twice."])
   const guess = opp("Two people retype each order.", 6, 3); guess.formula.label = "sector estimate"
   assert.deepEqual(headline(guess)!.h1, ["Mill visit reports written twice."])

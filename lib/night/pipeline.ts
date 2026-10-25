@@ -91,7 +91,7 @@ export function startNightPath(companyId: string, leadId?: string | null, recipi
   const ctx = loadContext(companyId, leadId)
   const pageId = uid("page")
   const slug = uid("p")
-  const letter: PageLetter = { recipient: recipient?.trim().slice(0, 60) || null, scale: null, checked: null, why: null, path: null, questions: [], teams: null }
+  const letter: PageLetter = { recipient: recipient?.trim().slice(0, 60) || null, scale: null, checked: null, why: null, insight: null, check: null, path: null, questions: [], teams: null }
   insert("pages", { id: pageId, slug, company_id: companyId, lead_id: ctx.lead?.id ?? null, status: "draft", script: [], skeptic: [], letter, created_at: now() })
   const runId = startRun("night_path", pageId, "pipeline")
   const done = build(ctx, pageId, slug, letter, rewrites).then(
@@ -125,7 +125,7 @@ async function build(ctx: NightContext, pageId: string, slug: string, letter: Pa
   const withScale = scaleSrc ? loadContext(companyId, ctx.lead?.id) : ctx
 
   // 1. research -> 1-3 cards, card 1's company-level "why" and pilot "path" lines, and (no lead) the questions
-  const found = live ? await research(withScale, pageId) : { opportunities: offlineOpps(withScale, pageId), why: offlineWhy(withScale), path: null, questions: [] }
+  const found = live ? await research(withScale, pageId) : { opportunities: offlineOpps(withScale, pageId), why: offlineWhy(withScale), insight: null, check: null, path: null, questions: [] }
   const opps = found.opportunities
   // Card 1's hours are the code's conversion of the quote, not the model's arithmetic (hours.ts); logged when they differ.
   const h = hoursFromQuote(ctx.lead?.quote)
@@ -146,6 +146,8 @@ async function build(ctx: NightContext, pageId: string, slug: string, letter: Pa
     ? { n, text: `About ${n} teams like this one across ${ctx.company.name}, as said in the hallway.`, source_ids: [hallwayId] }
     : null
   letter.why = found.why
+  letter.insight = found.insight
+  letter.check = found.check
   letter.path = found.path
   letter.questions = found.questions
   opps.forEach((o, i) => insert("opportunities", { id: uid("opp"), page_id: pageId, title: o.title, claim: o.claim, formula: o.formula, position: i }))
@@ -153,7 +155,7 @@ async function build(ctx: NightContext, pageId: string, slug: string, letter: Pa
   const fresh = loadContext(companyId, ctx.lead?.id) // researcher tools may have added sources
 
   // 2. script (sanitized and fitted inside), 3. skeptic loop (REWRITES rewrites, every round stored)
-  const extra = { recipient: letter.recipient, questions: letter.questions, why: letter.why, path: letter.path, teams: letter.teams }
+  const extra = { recipient: letter.recipient, questions: letter.questions, why: letter.why, insight: letter.insight, path: letter.path, teams: letter.teams }
   let lines = live ? (await writeScript(fresh, pageId, opps, undefined, extra)).lines : offlineScript(fresh, pageId, opps)
   savePage(pageId, { script: lines })
   const rounds: SkepticScore[] = []

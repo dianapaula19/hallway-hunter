@@ -16,6 +16,12 @@ const clip = (v: unknown) => {
 // (deterministic, a few ms) so /hq never opens on a hold that a rule fix already cleared, or misses one a new rule adds.
 let rechecked = false
 
+// A page is listed only when its status and its approval agree, i.e. /hq says what /p renders. A page whose status was
+// set by hand (Teleste: page killed, approval still PENDING) stays off the board until it goes through Kill like any other.
+const AGREES = `NOT EXISTS (SELECT 1 FROM approvals x WHERE x.ref_id = p.id AND NOT (
+  (x.status = 'PENDING' AND p.status = 'pending_approval') OR (x.status = 'REJECTED' AND p.status = 'killed') OR
+  (x.status IN ('APPROVED', 'EDITED') AND p.status = 'approved')))`
+
 export function GET() {
   if (!rechecked) { rechecked = true; try { recheckWaiting() } catch (e) { console.error("compliance recheck failed", e) } }
   const runs = all<AgentRun>("SELECT * FROM agent_runs ORDER BY started_at DESC LIMIT 20")
@@ -30,9 +36,9 @@ export function GET() {
     })),
     approvals: all<Approval>(
       `SELECT a.*, p.compliance, p.skeptic, p.status AS page_status, p.company_id, c.name AS company FROM approvals a
-       LEFT JOIN pages p ON p.id = a.ref_id LEFT JOIN companies c ON c.id = p.company_id WHERE a.status = 'PENDING' ORDER BY a.created_at DESC`),
+       JOIN pages p ON p.id = a.ref_id LEFT JOIN companies c ON c.id = p.company_id WHERE a.status = 'PENDING' AND p.status = 'pending_approval' ORDER BY a.created_at DESC`),
     outbox: all<OutboxDraft>("SELECT * FROM outbox ORDER BY created_at DESC LIMIT 20"),
-    pages: all("SELECT p.id, p.slug, p.status, p.created_at, c.name AS company FROM pages p JOIN companies c ON c.id = p.company_id ORDER BY p.created_at DESC LIMIT 20"),
+    pages: all(`SELECT p.id, p.slug, p.status, p.created_at, c.name AS company FROM pages p JOIN companies c ON c.id = p.company_id WHERE ${AGREES} ORDER BY p.created_at DESC LIMIT 20`),
     // The night path opens on the hallway quote, so only companies with a saved lead can be picked.
     companies: all("SELECT id, name FROM companies c WHERE EXISTS (SELECT 1 FROM leads l WHERE l.company_id = c.id) ORDER BY created_at DESC LIMIT 50"),
     leads: all("SELECT id, company_id, role, created_at FROM leads ORDER BY created_at DESC LIMIT 100"),

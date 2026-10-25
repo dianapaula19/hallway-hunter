@@ -43,9 +43,11 @@ const CLAIM = {
   properties: { text: { type: "string" }, source_ids: { type: "array", items: { type: "string" } } },
 }
 const SCHEMA = {
-  type: "object", additionalProperties: false, required: ["opportunities", "why", "path", "questions"],
+  type: "object", additionalProperties: false, required: ["opportunities", "why", "insight", "check_first", "path", "questions"],
   properties: {
     why: CLAIM,
+    insight: CLAIM,
+    check_first: { type: "string" },
     path: CLAIM,
     questions: { type: "array", items: CLAIM },
     opportunities: {
@@ -98,6 +100,18 @@ Also return:
   says "dealers order spare parts by email". ONE plain sentence (max 30 words), stated only as far as the source states it,
   citing it. A framework, award or company blurb that does not itself mention the process is NOT a reason: leave why empty.
   Never write "if", "assuming", "could", or a tie the source does not state.
+- insight: ONE sentence (max 30 words) the reader did NOT say and the hallway note does not contain: a fact from a PUBLIC
+  source naming this company itself (its own site, the trade register, or a TED award won by this exact registered company,
+  not a subsidiary or namesake) about the volume or the channels behind card 1's process: how many plants, sites, countries,
+  dealers or customers, which customer groups or order channels (dealers, utilities, a web shop, EDI). The page prints it
+  above the fold under "Why this matters at <company>". State only what the source states, citing it: no link words
+  ("means", "adds", "so", "which drives"), no "if", no guess. E.g. "Your own site lists eleven plants in six countries and
+  says customers order through a web shop and by email." (an invented example: take nothing from it). If the store has
+  no such fact, FIRST call fetch_site on one or two pages of their own site likely to state it (e.g. /company, /about-us,
+  /contact, /dealers, /locations on their domain). Only if no source then states one, return empty text and empty source_ids. Never restate the hallway note or the company blurb.
+- check_first: only when insight is empty, otherwise "". What we would check first to size card 1 across the company, as
+  a short phrase (max 20 words) with no digits and no names except words already in the hallway note, e.g. "how many
+  customers send orders this way, and into which inboxes or systems they arrive".
 - path: ONE sentence (max 30 words) framing card 1 as a pilot when its team is small (people 5 or fewer): start with card 1's
   process, then name what the same fix reaches next, e.g. "Start with dealer parts orders; the same reader then handles warranty
   claims and service reports." Only when a cited source names that next process: cite it (and the hallway source if you repeat
@@ -107,7 +121,7 @@ Also return:
   under one food framework (TED ...): how do their call-off orders reach your order system today?". No questions about
   what a source does not show. With a hallway lead, return an empty list.`
 
-export async function research(ctx: NightContext, pageId: string): Promise<{ runId: string; opportunities: DraftOpportunity[]; why: Claim | null; path: Claim | null; questions: Claim[]; dropped: number }> {
+export async function research(ctx: NightContext, pageId: string): Promise<{ runId: string; opportunities: DraftOpportunity[]; why: Claim | null; insight: Claim | null; check: string | null; path: Claim | null; questions: Claim[]; dropped: number }> {
   const { company } = ctx
   const tools: Tool<any>[] = [
     {
@@ -140,7 +154,7 @@ export async function research(ctx: NightContext, pageId: string): Promise<{ run
 
   const h = hoursFromQuote(ctx.lead?.quote)
   const lead = ctx.lead ? `Hallway lead (role: ${ctx.lead.role}): pain "${ctx.lead.pain}", quote "${ctx.lead.quote}".${h ? `\nHours, converted in code from the quote (use exactly these numbers in card 1's claim and formula): ${h.working}.` : ""}${ctx.lead.teams ? `\nAsked in the hallway, they said about ${ctx.lead.teams} teams like theirs across the company do this task. The page scales the headline by that count itself: keep card 1's people as the one team met.` : ""}` : "No hallway lead."
-  const r = await runAgent<{ opportunities: { title: string; claim: Claim; formula: Partial<EuroFormula> }[]; why?: Claim; path?: Claim; questions?: Claim[] }>({
+  const r = await runAgent<{ opportunities: { title: string; claim: Claim; formula: Partial<EuroFormula> }[]; why?: Claim; insight?: Claim; check_first?: string; path?: Claim; questions?: Claim[] }>({
     agent: "researcher", subjectId: pageId, system: SYSTEM, tools, maxToolCalls: 8, effort: "medium", schema: SCHEMA,
     prompt: `Company: ${company.name}${company.business_id ? ` (Y-tunnus ${company.business_id})` : ""}\n${lead}\n\nEvidence store:\n${sourceList(ctx.sources) || "(empty)"}\n\nReturn 1-3 opportunities, only those a cited source directly supports.`,
   })
@@ -154,28 +168,37 @@ export async function research(ctx: NightContext, pageId: string): Promise<{ run
     .map((o) => ({ title: String(o.title).slice(0, 80), claim: o.claim, formula: normalizeFormula(o.formula, known) }))
   // "why" must lean on a public source (TED, own site or the trade register); anything else is dropped, not shown uncited.
   const pub = new Set(all<{ id: string }>("SELECT id FROM sources WHERE company_id = ? AND kind IN ('ted', 'site', 'prh')", company.id).map((x) => x.id))
-  const w = r.json?.why
   // Then the uncited tie is marked as our assumption (sanitize.ts); a line that is only an assumption is no reason at all.
-  const cleanWhy = w?.text?.trim() && opportunities.length
-    ? sanitizeClaims(company.id, [w], r.runId).kept.find((k) => k.source_ids.some((id) => pub.has(id))) ?? null
-    : null
   // Readers took a marked assumption ("Our assumption, to check with you: …") as an invented trigger, so a why that needs
-  // one, says "if", or rests on a TED award to a subsidiary or namesake is dropped, not marked (round 7).
-  const tedById = new Map(ctx.sources.filter((x) => x.kind === "ted").map((x) => [x.id, x]))
-  const why = cleanWhy && !markInference(cleanWhy).text.includes(ASSUME) && !CONDITIONAL.test(cleanWhy.text) &&
-    cleanWhy.source_ids.every((id) => !tedById.has(id) || namesCompany(company.name, tedById.get(id)!.excerpt)) ? cleanWhy : null
-  // "path" may go uncited only when it states no fact (no digit, €, % or proper noun), the script-line rule. When its only
-  // facts are card 1's own words ("Start with PDF orders into SAP; …"), it cites card 1's sources rather than being dropped.
-  const pt = r.json?.path
+  // one, says "if", or rests on a TED award to a subsidiary or namesake is dropped, not marked (round 7). The insight
+  // (round 8) is held to the same rule.
+  // From the DB, not ctx: the researcher's own ted_search may have added awards.
+  const tedById = new Map(all<Source>("SELECT * FROM sources WHERE company_id = ? AND kind = 'ted'", company.id).map((x) => [x.id, x]))
+  const publicFact = (c: Claim | undefined): Claim | null => {
+    if (!c?.text?.trim() || !opportunities.length) return null
+    const k = sanitizeClaims(company.id, [c], r.runId).kept.find((x) => x.source_ids.some((id) => pub.has(id)))
+    return k && !markInference(k).text.includes(ASSUME) && !CONDITIONAL.test(k.text) &&
+      k.source_ids.every((id) => !tedById.has(id) || namesCompany(company.name, tedById.get(id)!.excerpt)) ? k : null
+  }
+  const why = publicFact(r.json?.why)
+  const insight = publicFact(r.json?.insight)
+  // An uncited line may state no fact (no digit, €, % or proper noun), the script-line rule, unless its only facts are
+  // card 1's own words ("Start with PDF orders into SAP; …").
   const card1 = opportunities[0] ? `${opportunities[0].title} ${opportunities[0].claim.text} ${ctx.lead?.quote ?? ""}`.toLowerCase() : ""
+  const cardOnly = (t: string) => !needsSource(t, company.name) || factWords(t).every((w) => card1.includes(w.toLowerCase().replace(/'?s$/, "")))
+  // "path": cited, or uncited under that rule; when its facts are card 1's, it cites card 1's sources rather than being dropped.
+  const pt = r.json?.path
   const path = pt?.text?.trim() && opportunities.length
     ? pt.source_ids?.length ? sanitizeClaims(company.id, [pt], r.runId).kept[0] ?? null
       : !needsSource(pt.text, company.name) ? { text: pt.text.trim(), source_ids: [] }
-      : factWords(pt.text).every((w) => card1.includes(w.toLowerCase())) ? { text: pt.text.trim(), source_ids: opportunities[0].claim.source_ids }
+      : cardOnly(pt.text) ? { text: pt.text.trim(), source_ids: opportunities[0].claim.source_ids }
       : null
     : null
+  // No insight a source supports: the one thing we'd check first, never a new fact.
+  const cf = String(r.json?.check_first ?? "").trim().replace(/[.\s]+$/, "")
+  const check = !insight && opportunities.length && cf && cf.split(/\s+/).length <= 25 && cardOnly(cf) ? cf.charAt(0).toLowerCase() + cf.slice(1) : null
   const questions = ctx.lead ? [] : sanitizeClaims(company.id, r.json?.questions ?? [], r.runId).kept.slice(0, 3)
-  return { runId: r.runId, opportunities, why, path, questions, dropped: raw.length - kept.length }
+  return { runId: r.runId, opportunities, why, insight, check, path, questions, dropped: raw.length - kept.length }
 }
 
 // Self-check (no model call): node lib/night/researcher.ts

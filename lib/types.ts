@@ -110,6 +110,8 @@ export interface PageLetter {
   path?: Claim | null // pilot framing: start with card 1's process, then the cited processes the same fix reaches
   questions: Claim[] // no-lead pages: what we'd ask, each grounded in a public source
   teams?: (Claim & { n: number }) | null // "about N teams like this across <company>", cited to the hallway note; scales the headline
+  insight?: Claim | null // one company-specific public fact the reader did not say (plants, dealer network, order channels), above the fold
+  check?: string | null // no insight a source supports: "What we'd check first: …", uncited, states no new fact
 }
 
 export type PageStatus = "draft" | "pending_approval" | "approved" | "killed"
