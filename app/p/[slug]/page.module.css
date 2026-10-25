@@ -202,3 +202,13 @@
 .working .ps { margin-top: 36px; }
 .ask { margin-top: 36px; }
 .sign { margin-top: 36px; }
+.result .term { width: 6.5em; font-weight: 400; letter-spacing: 0; }
+/* phone: keep Reply yes inside the first screen */
+@media (max-width: 600px) {
+  .stub { margin-top: 16px; }
+  .eyebrow { margin-top: 20px; }
+  .quote { margin-top: 24px; }
+  .quote blockquote { font-size: 19px; }
+  .ask { margin-top: 24px; }
+  .yesRow { margin-top: 14px; }
+}

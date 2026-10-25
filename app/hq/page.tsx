@@ -169,7 +169,7 @@ export default function HQ() {
               {b?.outbox.map((o) => (
                 <li key={o.id}>
                   <details>
-                    <summary>{o.subject} <span className={s.time}>→ {o.to_addr}</span></summary>
+                    <summary>{o.subject} <span className={s.time}>→ {/@localhost$/i.test(o.to_addr) ? "our own inbox (set HH_OWN_INBOX)" : o.to_addr}</span></summary>
                     <pre className={s.pre}>{o.body}</pre>
                   </details>
                 </li>

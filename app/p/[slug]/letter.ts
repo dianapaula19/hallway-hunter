@@ -51,8 +51,8 @@ export function headline(top: Opportunity | undefined, teams?: number | null): {
   // No input sourced at all ("sector estimate", e.g. the offline template's defaults): the hours are a guess, not a headline.
   if (assumed >= 2 || f.label === "sector estimate") return { h1: [top.title.replace(/[.\s]*$/, ".")], eur, label: f.label }
   if (teams && teams >= 2) return {
-    h1: [`${fi(hours)} hours a week by hand, in each of about ${teams} teams.`, `About ${fiEur(eurN * teams)} a year to win back.`],
-    eur: `${fiEur(eurN)} a year for this team · about ${teams} teams like it → ~${fiEur(eurN * teams)}`, label: f.label, scaled: true,
+    h1: [`About ${fiEur(eurN * teams)} a year to win back,`, `across about ${teams} teams like this one.`],
+    eur: `${fi(hours)} h a week by hand in this team: ${fiEur(eurN)} a year · about ${teams} teams like it → ~${fiEur(eurN * teams)}`, label: f.label, scaled: true,
   }
   if (eurN < SMALL_EUR) return { h1: [`${fi(hours)} hours a week by hand.`], eur, label: f.label }
   return { h1: [`${fi(hours)} hours a week by hand.`, `${eur}.`], eur: null, label: f.label }
@@ -107,8 +107,8 @@ if (import.meta.main) {
   assert.equal(headline(opp("Two people retype each order.", 7.5, 2))!.eur, `About ${fiEur(17250)} a year to win back`)
   assert.equal(headline(opp("Forty people retype.", 7.5, 40))!.h1.length, 2)
   const scaled = headline(opp("Three of us retype.", 10, 3), 6)!
-  assert.deepEqual(scaled.h1, ["30 hours a week by hand, in each of about 6 teams.", `About ${fiEur(34500 * 6)} a year to win back.`])
-  assert.equal(scaled.eur, `${fiEur(34500)} a year for this team · about 6 teams like it → ~${fiEur(34500 * 6)}`)
+  assert.deepEqual(scaled.h1, [`About ${fiEur(34500 * 6)} a year to win back,`, "across about 6 teams like this one."])
+  assert.equal(scaled.eur, `30 h a week by hand in this team: ${fiEur(34500)} a year · about 6 teams like it → ~${fiEur(34500 * 6)}`)
   assert.deepEqual(headline(opp("Three of us retype.", 10, 3), null)!.h1, ["30 hours a week by hand.", `About ${fiEur(34500)} a year to win back.`])
   const guess = opp("Two people retype each order.", 6, 3); guess.formula.label = "sector estimate"
   assert.deepEqual(headline(guess)!.h1, ["Mill visit reports written twice."])
