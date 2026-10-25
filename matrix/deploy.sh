@@ -28,7 +28,7 @@ echo "packed HEAD: $(du -h "$TMP/hh.tgz" | cut -f1)"
 ( umask 077
   { grep -E '^ANTHROPIC_(API_KEY|MODEL)=' "$HACK/.env" || true
     grep -E '^NEXT_PUBLIC_POSTHOG_' "$REPO/.env" 2>/dev/null || true
-    grep -E '^HH_CONSULTANT_' "$REPO/.env.local" 2>/dev/null || true   # demo sender name on the page
+    sed -n 's/^\(HH_CONSULTANT_[A-Z]*\)="\?\([^"]*\)"\?$/\1="\2"/p' "$REPO/.env.local" 2>/dev/null   # demo sender name on the page, quoted (it has a space)
     echo NEXT_BASE_PATH=/apps/hallway-hunter; } > "$TMP/env.local" )
 echo "secrets file keys: $(cut -d= -f1 "$TMP/env.local" | tr '\n' ' ')"
 
