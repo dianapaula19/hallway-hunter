@@ -1,12 +1,12 @@
 // Quick Scout: company -> cited <=120-word Brief. Evidence is pre-fetched in parallel so the model
 // usually answers in one turn (the <40 s target); the tools stay available for a follow-up look.
-import { all } from "../db.ts"
+import { all, run } from "../db.ts"
 import { hasKey, runAgent, type Tool } from "../claude.ts"
 import type { Brief, BriefRow, Claim, Company, Source } from "../types.ts"
-import { evidenceBrief, finalizeBrief, storeBrief } from "./brief.ts"
+import { evidenceBrief, finalizeBrief, namesCompany, storeBrief } from "./brief.ts"
 import { loadCompany, prhSource } from "./prh.ts"
 import { fetchSite } from "./site.ts"
-import { tedSearch } from "./ted.ts"
+import { stem, tedSearch } from "./ted.ts"
 
 const CLAIM = {
   type: "object", additionalProperties: false, required: ["text", "source_ids"],
@@ -28,8 +28,9 @@ const BRIEF_SCHEMA = {
 const SYSTEM = `You are one of Velho's AI analysts. A Velho consultant is about to talk to someone from this company in a conference hallway and has 20 seconds to read your brief.
 Rules:
 - Use ONLY the sources listed (ids like src_xxx). Every claim's source_ids must be ids from that list. Never invent ids, URLs, numbers or names. Every word of a claim must be backed by the excerpt of a source it cites: no background knowledge.
-- what_they_do: <=20 words. signals: exactly 2 recent, concrete facts (TED tenders/awards, site news, register changes), <=18 words each. If you cannot find 2 real signals, return fewer and set thin_data true. Do not pad.
-- openers: exactly 3 short questions (<=12 words) the consultant can ask; they may only refer to facts in your cited claims.
+- what_they_do: <=20 words, in plain words a person would use. If a site source (the company's own website) is listed, take it from the site's own description of what they make or do, citing it; the trade register's industry code ("manufacture of grain mill products", "activities of head offices") is a last resort.
+- signals: exactly 2 recent, concrete facts (TED tenders/awards, site news, register changes), <=18 words each. A TED source counts only when "names_this_company" is true: an award to a subsidiary or a namesake abroad (e.g. "X Latvija SIA" for "Oy X Ab") is not this company's signal. Mention such an award at most once, saying whose it is, and never build an opener on it. If you cannot find 2 real signals, return fewer and set thin_data true. Do not pad.
+- openers: exactly 3 short questions (<=12 words) the consultant can ask about this company's own work, as a curious peer would; they may only refer to facts in your cited claims about this company itself. With thin data, ask open questions about their work instead of quizzing them on a tender.
 - dont_say: one thing to avoid (<=10 words). objection: the most likely pushback (<=18 words), citing the source that makes it likely.
 - Whole brief <=110 words. Plain English, no hype, no promises.
 - Answer immediately if the listed sources suffice; call a tool only if a key fact is missing.`
@@ -58,15 +59,32 @@ function tools(company: Company): Tool<any>[] {
 
 export interface ScoutResult { brief: BriefRow; sources: Source[]; mode: "model" | "evidence"; note: string | null; ms: number }
 
+
+// No website on record (PRH has none for Oy Karl Fazer Ab): try www.<stem>.com, then .fi, and keep a page only if its
+// title names the stem; the found origin is stored so the night path reads the same site. Registered companies only.
+async function guessSite(company: Company): Promise<Source | null> {
+  if (!company.business_id) return null
+  const s = stem(company.name).toLowerCase().normalize("NFD").replace(/[^a-z0-9-]/g, "")
+  if (s.length < 3) return null
+  for (const url of [`https://www.${s}.com/`, `https://www.${s}.fi/`]) {
+    const src = await fetchSite(company, url, s)
+    if (src?.url) { run("UPDATE companies SET website = ? WHERE id = ? AND website IS NULL", new URL(src.url).origin, company.id); return src }
+  }
+  return null
+}
+
 export async function quickScout(company: Company): Promise<ScoutResult> {
   const t0 = Date.now()
   const prh = prhSource(company.id)
   if (!prh) throw new Error("company has no PRH source; call loadCompany first")
   const [ted, site] = await Promise.all([
     tedSearch(company, 3).catch(() => [] as Source[]),
-    company.website ? fetchSite(company, company.website) : Promise.resolve(null),
+    company.website ? fetchSite(company, company.website) : guessSite(company),
   ])
+  if (site && !company.website) company = { ...company, website: new URL(site.url!).origin }
   const evidence = [prh, ...(site ? [site] : []), ...ted]
+  // A TED award to a subsidiary or a namesake abroad ("Fazer Latvija SIA" for Oy Karl Fazer Ab) is not this company's signal.
+  const foreign = new Set(ted.filter((s) => !namesCompany(s, company.name)).map((s) => s.id))
   const fallbackWhat: Claim = evidenceBrief(company, prh, []).what_they_do
 
   let brief: Brief
@@ -81,7 +99,7 @@ export async function quickScout(company: Company): Promise<ScoutResult> {
       const r = await runAgent<Brief>({
         agent: "quick_scout", subjectId: company.id, system: SYSTEM, tools: tools(company),
         maxToolCalls: 5, effort: "low", maxTokens: 4000, schema: BRIEF_SCHEMA, timeoutMs: 15_000,
-        prompt: `Company: ${company.name} (Y-tunnus ${company.business_id ?? "n/a"}, website ${company.website ?? "unknown"}).\nSources:\n${JSON.stringify(evidence.map(view), null, 1)}`,
+        prompt: `Company: ${company.name} (Y-tunnus ${company.business_id ?? "n/a"}, website ${company.website ?? "unknown"}).\nSources:\n${JSON.stringify(evidence.map((s) => (s.kind === "ted" ? { ...view(s), names_this_company: !foreign.has(s.id) } : view(s))), null, 1)}`,
       })
       runId = r.runId
       brief = finalizeBrief(company.id, r.json!, fallbackWhat, r.runId)
@@ -91,6 +109,8 @@ export async function quickScout(company: Company): Promise<ScoutResult> {
     }
   }
   if (mode === "evidence") brief = finalizeBrief(company.id, brief, fallbackWhat)
+  // Signals that rest only on group-company or namesake awards make a thin brief, whatever the model said.
+  if (brief.signals.length && brief.signals.every((c) => c.source_ids.every((id) => foreign.has(id)))) brief = { ...brief, thin_data: true }
   const row = storeBrief(company.id, brief, runId)
   const sources = all<Source>("SELECT * FROM sources WHERE company_id = ?", company.id)
   const cited = new Set([brief.what_they_do, ...brief.signals, brief.objection].flatMap((c) => c.source_ids))

@@ -57,6 +57,7 @@ export default function CapturePage() {
   const [listening, setListening] = useState(false)
   const [transcript, setTranscript] = useState("")
   const [role, setRole] = useState("") // job title from the badge (prefilled) or typed; the note may not say it
+  const [teams, setTeams] = useState("") // "how many teams like theirs?", as they answered it; empty = not asked
   // On by default: at a demo the note is made up on the spot about a real company, and the page must say so.
   const [demoNote, setDemoNote] = useState(true)
   const [leads, setLeads] = useState<Lead[]>([])
@@ -149,10 +150,10 @@ export default function CapturePage() {
     if (!company || !transcript.trim()) return
     setBusy("Saving lead (names scrubbed)…")
     try {
-      const r = await post<{ lead?: Lead; error?: string }>("/api/lead", JSON.stringify({ company_id: company.id, transcript, synthetic: demoNote, role }))
+      const r = await post<{ lead?: Lead; error?: string }>("/api/lead", JSON.stringify({ company_id: company.id, transcript, synthetic: demoNote, role, teams: teams ? Number(teams) : null }))
       if (r.error) setNoteMsg(r.error); else {
         if (process.env.NEXT_PUBLIC_POSTHOG_KEY && process.env.NEXT_PUBLIC_POSTHOG_HOST) posthog.capture("lead_saved")
-        setTranscript(""); setNoteMsg(null); await loadLeads(company.id)
+        setTranscript(""); setTeams(""); setNoteMsg(null); await loadLeads(company.id)
       }
     } catch (e) { setNoteMsg(`${plain(e)} Your note is still here.`) } finally { setBusy(null) }
   }
@@ -314,6 +315,10 @@ export default function CapturePage() {
               {noteMsg && <p className={s.error} role="alert">{noteMsg}</p>}
               <textarea className={s.input} value={transcript} onChange={(e) => setTranscript(e.target.value)} rows={4} placeholder="Transcript appears here. Edit before saving." aria-label="Voice note transcript" />
               <input className={s.input} value={role} onChange={(e) => setRole(e.target.value)} placeholder="Their job title (from the badge, or ask)" aria-label="Their job title" autoComplete="off" />
+              <label className={s.teams}>
+                <span>How many teams like theirs across the company do this task? <small>Optional: ask them. Their answer scales the page&apos;s headline, cited to this note.</small></span>
+                <input className={s.input} value={teams} onChange={(e) => setTeams(e.target.value.replace(/[^\d]/g, "").slice(0, 4))} inputMode="numeric" placeholder="e.g. 6" autoComplete="off" />
+              </label>
               <label className={s.demoNote}>
                 <input type="checkbox" checked={demoNote} onChange={(e) => setDemoNote(e.target.checked)} />
                 <span>Demo note: invented for a demo, and labelled that way on every page. Untick only for a real conversation.</span>
@@ -327,7 +332,7 @@ export default function CapturePage() {
                   {leads.map((l) => (
                     <li key={l.id}>
                       <div>
-                        <p className={s.leadRole}>{l.role} <span className={s.tag}>{l.temperature}</span>{l.synthetic ? <span className={s.tag}>demo note</span> : null}</p>
+                        <p className={s.leadRole}>{l.role} <span className={s.tag}>{l.temperature}</span>{l.synthetic ? <span className={s.tag}>demo note</span> : null}{l.teams ? <span className={s.tag}>~{l.teams} teams</span> : null}</p>
                         <blockquote className={s.quote}>&ldquo;{l.quote}&rdquo;</blockquote>
                         <p className={s.meta}>{l.pain}{l.next_step && ` → ${l.next_step}`}</p>
                       </div>

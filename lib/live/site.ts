@@ -34,16 +34,18 @@ export function htmlToText(html: string): { title: string; description: string; 
   return { title: clean(title), description: clean(description), text: clean(text) }
 }
 
-export async function fetchSite(company: Company, url: string): Promise<Source | null> {
+// titleMustInclude: for a guessed domain (www.<stem>.com), keep the page only if its <title> names the company stem.
+export async function fetchSite(company: Company, url: string, titleMustInclude?: string): Promise<Source | null> {
   const u = allowedUrl(company, url)
   if (!u) return null
   const existing = get<Source>("SELECT * FROM sources WHERE company_id = ? AND kind = 'site' AND url = ?", company.id, u.href)
-  if (existing) return existing
+  if (existing) return !titleMustInclude || norm(existing.title).includes(norm(titleMustInclude)) ? existing : null
   try {
     const res = await fetch(u, { method: "GET", redirect: "follow", signal: AbortSignal.timeout(8000), headers: { "user-agent": "HallwayHunter/0.1 (read-only research)", accept: "text/html" } })
     if (!res.ok || !(res.headers.get("content-type") ?? "").includes("html")) return null
     if (!allowedUrl(company, res.url || u.href)) return null // redirected off-site
     const { title, description, text } = htmlToText((await res.text()).slice(0, 500_000))
+    if (titleMustInclude && !norm(title).includes(norm(titleMustInclude))) return null
     const excerpt = [description, text].filter(Boolean).join(" | ").slice(0, 600)
     if (!excerpt) return null
     return addSource({ company_id: company.id, kind: "site", url: u.href, title: title || u.hostname, excerpt })

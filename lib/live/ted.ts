@@ -20,9 +20,13 @@ export interface TedNotice {
 export interface TedHit { number: string; date: string; type: string; title: string; buyers: string[]; tenderers: string[]; role: "tenderer" | "buyer"; url: string }
 
 // Distinctive name stem for TED's fuzzy `~` match: "Wärtsilä Oyj Abp" -> "Wärtsilä".
+// A name that opens with its legal form ("Oy Karl Fazer Ab", "Oy Hartwall Ab") puts the founder's first name first: the
+// family name at the end is the brand ("Karl" found Karl Lagerfeld's karl.com and Karl Storz tenders; round 6).
 export function stem(name: string): string {
-  const words = name.replace(/["()]/g, " ").split(/\s+/).filter((w) => w && !LEGAL.test(w.replace(/\.$/, "")))
-  return (words.find((w) => w.length >= 4) ?? words[0] ?? name).replace(/[^\p{L}\p{N}&-]/gu, "")
+  const all = name.replace(/["()]/g, " ").split(/\s+/).filter(Boolean)
+  const words = all.filter((w) => !LEGAL.test(w.replace(/\.$/, "")))
+  const pick = LEGAL.test(all[0] ?? "") && words.length > 1 ? words.at(-1) : words.find((w) => w.length >= 4)
+  return (pick ?? words[0] ?? name).replace(/[^\p{L}\p{N}&-]/gu, "")
 }
 
 const pick = (o?: Lang): string => {

@@ -6,10 +6,11 @@ export const dynamic = "force-dynamic"
 
 // POST {company_id, transcript, synthetic?, role?} -> lead (role only, names scrubbed) + its hallway source.
 export async function POST(req: Request) {
-  const { company_id, transcript, synthetic, role } = (await req.json().catch(() => ({}))) as { company_id?: string; transcript?: string; synthetic?: boolean; role?: unknown }
+  const { company_id, transcript, synthetic, role, teams } = (await req.json().catch(() => ({}))) as { company_id?: string; transcript?: string; synthetic?: boolean; role?: unknown; teams?: unknown }
   if (!company_id || !transcript?.trim()) return Response.json({ error: "company_id and transcript required" }, { status: 400 })
   try {
-    return Response.json({ lead: await extractLead(company_id, transcript, synthetic === true, typeof role === "string" ? role : null) })
+    const t = typeof teams === "number" || typeof teams === "string" ? Number(teams) : null
+    return Response.json({ lead: await extractLead(company_id, transcript, synthetic === true, typeof role === "string" ? role : null, t) })
   } catch (e) {
     return Response.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 })
   }

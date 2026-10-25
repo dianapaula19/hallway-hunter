@@ -127,3 +127,6 @@ textarea.input { width: 100%; resize: vertical; font: 17px/1.5 var(--serif); }
 
 .demoNote { display: flex; gap: 10px; align-items: flex-start; font-size: var(--text-sm, 14px); color: var(--muted); line-height: 1.4; min-height: 44px; cursor: pointer; }
 .demoNote input { width: 20px; height: 20px; margin: 2px 0 0; flex: none; accent-color: var(--velho, currentColor); }
+.teams { display: grid; gap: 6px; font-size: 15px; }
+.teams small { display: block; color: var(--muted); font-size: 13px; }
+.teams .input { max-width: 8em; }

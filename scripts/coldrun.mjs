@@ -1,8 +1,8 @@
 // Cold-run rehearsal through the real HTTP routes, timed per step (PRH 1 request, model 5 runs per company; --no-night: 2).
-// Usage: node scripts/coldrun.mjs "<company name>" "<spoken-style note>" "<job title or empty>" [--no-night]   (BASE, default :3100)
+// Usage: node scripts/coldrun.mjs "<company name>" "<spoken-style note>" "<job title or empty>" [<teams like theirs>] [--no-night]   (BASE, default :3100)
 // The note is saved as a demo note (synthetic). Space companies at least 20 s apart: PRH rate-limits bursts.
 const BASE = process.env.BASE ?? "http://localhost:3100"
-const [q, note, role] = process.argv.slice(2)
+const [q, note, role, teams] = process.argv.slice(2).filter((a) => !a.startsWith("--"))
 const noNight = process.argv.includes("--no-night")
 const t = () => performance.now()
 const post = async (path, body) => {
@@ -24,12 +24,12 @@ const scMs = t() - a
 const b = sc.j.brief?.brief
 log("scout (brief)", scMs, `${sc.status} mode=${sc.j.mode ?? "model"} words=${sc.j.brief?.word_count} thin=${b?.thin_data} sources=${(sc.j.sources ?? []).map((s) => s.kind).join(",")} ${sc.j.error ?? ""}`)
 log("name to brief", capMs + scMs)
-if (b) console.log("  what:", b.what_they_do.text, "\n  signals:", b.signals.map((s) => s.text).join(" / "))
+if (b) console.log("  what:", b.what_they_do.text, "\n  signals:", b.signals.map((s) => s.text).join(" / "), "\n  openers:", b.openers.join(" / "), "\n  objection:", b.objection.text)
 const company = sc.j.company
 out.company = company?.id
 
 a = t()
-const ld = await post("/api/lead", { company_id: company.id, transcript: note, synthetic: true, role })
+const ld = await post("/api/lead", { company_id: company.id, transcript: note, synthetic: true, role, teams: teams ? Number(teams) : null })
 log("note (lead_extract)", t() - a, `${ld.status} role=${ld.j.lead?.role} quote=${JSON.stringify(ld.j.lead?.quote)} ${ld.j.error ?? ""}`)
 out.lead = ld.j.lead?.id
 if (noNight) { console.log(JSON.stringify(out)); process.exit(0) }

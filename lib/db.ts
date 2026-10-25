@@ -139,6 +139,8 @@ const MIGRATIONS: [string, string, string, string?][] = [
   ["leads", "synthetic", "INTEGER NOT NULL DEFAULT 0", "UPDATE leads SET synthetic = 1"],
   // JSON PageLetter: recipient, what we checked, scale fact, questions (lib/types.ts).
   ["pages", "letter", "TEXT"],
+  // How many teams like the one met do this task across the company, as said in the hallway (null = not asked).
+  ["leads", "teams", "INTEGER"],
 ]
 
 const g = globalThis as unknown as { __hhdb?: DatabaseSync }
