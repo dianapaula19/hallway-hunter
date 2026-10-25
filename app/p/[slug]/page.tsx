@@ -4,8 +4,6 @@ import { all, get } from "@/lib/db.ts"
 import { ASSUME, isConfidential } from "@/lib/night/compliance.ts"
 import type { Claim, Company, Lead, Opportunity, Page, Source } from "@/lib/types.ts"
 import { TERMS } from "@/lib/night/script.ts"
-import { hoursFromQuote } from "@/lib/night/hours.ts"
-import { contractsText, contractsWon } from "@/lib/night/scale.ts"
 import { Chips, Forward, FormulaRow, Player } from "./client.tsx"
 import { checkedLine, fi, fiEur, fiText, headline, withoutEcho } from "./letter.ts"
 import { eurPerYear } from "@/lib/night/formula.ts"
@@ -70,9 +68,7 @@ export default async function DraftPage({ params, searchParams }: { params: Prom
   // cites public evidence; a "we found nothing public" sentence is not a reason and stays out of the card.
   const why = letter?.why ?? (isPublic(letter?.checked) && !/found nothing/i.test(letter!.checked!.text) ? letter!.checked : null)
   const path = letter?.path ?? null
-  // Company-level quantity from cited evidence only: EU contracts the company itself won (scale.ts), never a headcount.
-  const won = opps.length ? contractsWon(company.name, [...sources.values()], why?.source_ids) : null
-  const checked = [letter?.scale, why, path, won && { text: "", source_ids: won.ids }].filter((c): c is Claim => !!c)
+  const checked = [letter?.scale, why, path].filter((c): c is Claim => !!c)
   // Everything the page rests on, by kind and date, cited or not (a hallway source from another lead is not this page's).
   const checkedItems = checkedLine([...sources.values()].filter((x) => x.kind !== "hallway" || x.id === hallway?.id))
   const questions = letter?.questions ?? []
@@ -96,11 +92,6 @@ export default async function DraftPage({ params, searchParams }: { params: Prom
   const teams = letter?.teams && letter.teams.source_ids.every((id) => sources.has(id)) && showQuote ? letter.teams : null
   const top = headline(opps[0], teams?.n)
   const pilotTeam = opps[0] ? `${fi(opps[0].formula.people)} ${opps[0].formula.people === 1 ? "person" : "people"}` : ""
-  // The note's hours converted in code (hours.ts), shown only when card 1's formula uses exactly those numbers.
-  const h = showQuote ? hoursFromQuote(lead.quote) : null
-  // A page made before hours.ts may hold a rounded value (2 for 2.1): shown with that rounding said, never a different number.
-  const hours = h && opps[0] && Math.abs(opps[0].formula.hours_per_week - h.eachPerWeek) <= 0.25 && (!h.people || opps[0].formula.people === h.people) ? h : null
-  const rounded = hours && opps[0].formula.hours_per_week !== hours.eachPerWeek ? `; the formula rounds it to ${fi(opps[0].formula.hours_per_week)} h` : ""
   // Two sentences the hallway contact can forward to the executive: the process with its estimate, then the one question.
   const fwdFirst = opps[0] && top
     ? `${fiText(opps[0].claim.text.split(/(?<=[.!?])\s/)[0])} ${top.eur ?? top.h1.at(-1)!.replace(/\.$/, "")} (${top.label}; the working is on the page).`
@@ -112,8 +103,9 @@ export default async function DraftPage({ params, searchParams }: { params: Prom
   // No real inbox configured (the db.ts fallback is a localhost address): say what the button does instead of linking it.
   // The .env.example placeholder (your-team@velho.example) counts as unset: .example addresses never receive mail.
   const inbox = process.env.HH_OWN_INBOX && !/\.example$/i.test(process.env.HH_OWN_INBOX) ? process.env.HH_OWN_INBOX : null
-  const askQ = ask ? ask.text.slice(0, q) : ""
-  const yes = inbox && `mailto:${inbox}?subject=${encodeURIComponent(`Yes, for ${name} (Velho draft)`)}&body=${encodeURIComponent(`Yes, please.\n\n${askQ}\n\n(Velho draft ${slug})`)}`
+  // The script says "a Velho consultant" (no personal names in model output); the printed question names the sender.
+  const askQ = ask ? ask.text.slice(0, q).replace(/\ba Velho consultant\b/, process.env.HH_CONSULTANT_NAME?.trim() || "a Velho consultant") : ""
+  const yes = ask && inbox && `mailto:${inbox}?subject=${encodeURIComponent(`Yes, for ${name} (Velho draft)`)}&body=${encodeURIComponent(`Yes, please.\n\n${askQ}\n\n(Velho draft ${slug})`)}`
   // The named sender, from the deployment's env. Unset: a placeholder role, never an invented Velho employee.
   const sender = {
     name: process.env.HH_CONSULTANT_NAME?.trim() || "Your Velho consultant",
@@ -213,11 +205,9 @@ export default async function DraftPage({ params, searchParams }: { params: Prom
                 {i === 0 && !top && why && <Why why={why} name={name} num={num} />}
                 <FormulaRow formula={o.formula} chips={<Chips ids={o.formula.input_source_ids} num={num} />}
                   teams={i === 0 ? teams?.n : null} teamsChips={i === 0 && teams ? <Chips ids={teams.source_ids} num={num} /> : null} />
-                {i === 0 && hours && <p className={s.hours}>Hours from the note, worked out: {fiText(hours.working)}{rounded}.</p>}
-                {i === 0 && (path || letter?.scale || won) && (
+                {i === 0 && (path || letter?.scale) && (
                   <p className={s.path}>
                     {path && <><span className={s.whyLabel}>Start as a pilot</span>{fiText(path.text)} <Chips ids={path.source_ids} num={num} /> </>}
-                    {won && <><span className={s.whyLabel}>Beyond the pilot</span>{fiText(contractsText(won, company.name))} <Chips ids={won.ids} num={num} /> </>}
                     {letter?.scale && <span className={s.muted}>For scale, {fiText(letter.scale.text)} <Chips ids={letter.scale.source_ids} num={num} /></span>}
                   </p>
                 )}

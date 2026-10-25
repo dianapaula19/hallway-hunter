@@ -9,7 +9,7 @@ import { eurPerYear, fmtEur, normalizeFormula } from "./formula.ts"
 import { loadContext, research, type DraftOpportunity, type NightContext } from "./researcher.ts"
 import { sanitizeClaims, sanitizeScript } from "./sanitize.ts"
 import { hoursFromQuote } from "./hours.ts"
-import { contractsText, contractsWon, findScale, scaleClaim } from "./scale.ts"
+import { findScale, scaleClaim } from "./scale.ts"
 import { CLOSE, fitScript, writeScript } from "./script.ts"
 import { BAR, minScore, skepticScore } from "./skeptic.ts"
 
@@ -157,8 +157,8 @@ async function build(ctx: NightContext, pageId: string, slug: string, letter: Pa
   let lines = live ? (await writeScript(fresh, pageId, opps, undefined, extra)).lines : offlineScript(fresh, pageId, opps)
   savePage(pageId, { script: lines })
   const rounds: SkepticScore[] = []
-  const won = contractsWon(ctx.company.name, fresh.sources, letter.why?.source_ids)
-  const facts = { hours: h?.working ?? null, contracts: won ? contractsText(won, ctx.company.name) : null }
+  // No "beyond the pilot" contract count any more (the page dropped it, round 7), so the reader test is not told one.
+  const facts = { hours: h?.working ?? null }
   if (live) {
     for (let round = 0; ; round++) {
       const { score } = await skepticScore(pageId, ctx.company.name, opps, lines, letter, facts)

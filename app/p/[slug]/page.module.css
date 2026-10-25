@@ -126,7 +126,6 @@
 .whyLead { margin-top: 18px; max-width: 600px; }
 .assume { color: var(--soft); font-style: italic; }
 .pilotLabel { font: 600 12px/1.4 var(--font-sans, inherit); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
-.hours { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
 .path { margin: 14px 0 0; font-size: 15px; line-height: 1.55; color: var(--soft); }
 .whyLabel { display: block; margin-bottom: 2px; font: 600 12px/1.4 var(--font-sans, inherit); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
 /* what we checked: one compact line, every source by kind and date */

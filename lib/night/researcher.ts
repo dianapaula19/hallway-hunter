@@ -7,12 +7,16 @@ import { tedSearch } from "../live/ted.ts"
 import { normalizeFormula } from "./formula.ts"
 import { hoursFromQuote } from "./hours.ts"
 import { ASSUME, markInference } from "./compliance.ts"
+import { namesCompany } from "./scale.ts"
 import { needsSource, sanitizeClaims } from "./sanitize.ts"
 
 // Words that make a sentence factual under the sanitizer's rule: digits, €/%, and capitalised words after a sentence start.
 export const factWords = (t: string) =>
   t.split(/(?<=[.!?;:])\s+/).flatMap((s) => s.split(/\s+/).slice(1)).map((w) => w.replace(/^[^\p{L}\d€%]+|[^\p{L}\d€%]+$/gu, ""))
     .filter((w) => /[\d€%]/.test(w) || /^\p{Lu}/u.test(w))
+
+// A why line that hedges its own link is not a reason to read on.
+export const CONDITIONAL = /\b(if|assum\w*|suppose|could|might|likely|perhaps)\b/i
 
 export interface NightContext { company: Company; lead: Lead | null; sources: Source[] }
 export interface DraftOpportunity { title: string; claim: Claim; formula: EuroFormula }
@@ -81,27 +85,23 @@ Rules:
   Put a source id in input_source_ids only when that source actually supports one of the inputs; otherwise leave it empty (it becomes a sector estimate).
   hours_per_week is PER PERSON: if the source gives a team total ("two of us, three hours a day"), divide it (people 2, 7.5 h/week each).
   If an input is assumed rather than stated, say so in the claim ("assuming four visits a week"), and say why the automation share ("a person still checks each order").
-  State hours both ways in the claim: per person and for the team ("7.5 h a week each, 15 h for the team").
+  State the time once, for the team, in plain words ("15 h a week for the two of them"); no per-person split, no conversion steps.
   people is the team that does the task. If no source gives it, use a small pilot team (2-5) and say "a pilot team of N" in the claim.
   Be conservative: Finnish loaded labour cost is typically 35-60 €/h, weeks_per_year about 46, automation_share rarely above 0.6.
 - No promises ("guarantee", "will save", "we will"). No personal names. Titles max 7 words, claims max 40 words, plain CEO English.
 - Tools: search_sources reads the evidence store; ted_search and fetch_site add new public evidence (read-only). Use them sparingly.
 - Never scale people to the company's headcount, dealer count or store count: nobody said those people do this task. The company-level case goes in "why" and "path" below, in words.
 Also return:
-- why: ONE or TWO short sentences (max 40 words) the COO or CEO reads FIRST, at the top of the page: the company-level reason
-  this process matters, from a PUBLIC source in the store (a TED award or framework with its month, the company's own site such
-  as its dealer network, service offer or size, or the trade register's industry line). First the public fact, stated only as
-  far as the cited source states it. Then the tie to card 1's process, which no source states, so write it as a clearly marked
-  conditional or question, never as fact: e.g. "You won the Lesy ČR harvester service framework in July 2026. If its service
-  orders reach your dealers' parts desk as PDFs too, they join the retyping." Never "every new framework adds orders" or
-  "this brings more reporting" as a statement. Cite the public source (and the hallway source if you repeat its detail).
-  A public source unrelated to the process or the company's scale (e.g. a one-off sale of one machine) is not a reason: then
-  return empty text and empty source_ids. No company blurb, no number in the tie.
+- why: usually EMPTY (empty text, empty source_ids). Fill it only when a PUBLIC source in the store names this company itself
+  (its own site, or a TED award whose winner is this exact registered company, not a subsidiary or namesake) AND that source
+  itself describes card 1's process or its volume, so the link needs no "if", no assumption and no guess: e.g. their own site
+  says "dealers order spare parts by email". ONE plain sentence (max 30 words), stated only as far as the source states it,
+  citing it. A framework, award or company blurb that does not itself mention the process is NOT a reason: leave why empty.
+  Never write "if", "assuming", "could", or a tie the source does not state.
 - path: ONE sentence (max 30 words) framing card 1 as a pilot when its team is small (people 5 or fewer): start with card 1's
   process, then name what the same fix reaches next, e.g. "Start with dealer parts orders; the same reader then handles warranty
-  claims and service reports." Name a further process only if a cited source mentions it, and cite it; cite the hallway source
-  when you repeat its detail. Otherwise write it with no
-  digits and no names ("then the next document type your team retypes") and empty source_ids. Empty text when there is no card.
+  claims and service reports." Only when a cited source names that next process: cite it (and the hallway source if you repeat
+  its detail). Otherwise return empty text and empty source_ids: readers called "the next document type" vague.
 - questions: only when there is NO hallway lead: 2 or 3 short questions we would ask their COO, each tied to one public source
   that shows a recurring process (a framework, many call-offs, many sites or stores), citing it, e.g. "You supply 14 municipalities
   under one food framework (TED ...): how do their call-off orders reach your order system today?". No questions about
@@ -159,7 +159,11 @@ export async function research(ctx: NightContext, pageId: string): Promise<{ run
   const cleanWhy = w?.text?.trim() && opportunities.length
     ? sanitizeClaims(company.id, [w], r.runId).kept.find((k) => k.source_ids.some((id) => pub.has(id))) ?? null
     : null
-  const why = cleanWhy && !markInference(cleanWhy).text.startsWith(ASSUME) ? markInference(cleanWhy) : null
+  // Readers took a marked assumption ("Our assumption, to check with you: …") as an invented trigger, so a why that needs
+  // one, says "if", or rests on a TED award to a subsidiary or namesake is dropped, not marked (round 7).
+  const tedById = new Map(ctx.sources.filter((x) => x.kind === "ted").map((x) => [x.id, x]))
+  const why = cleanWhy && !markInference(cleanWhy).text.includes(ASSUME) && !CONDITIONAL.test(cleanWhy.text) &&
+    cleanWhy.source_ids.every((id) => !tedById.has(id) || namesCompany(company.name, tedById.get(id)!.excerpt)) ? cleanWhy : null
   // "path" may go uncited only when it states no fact (no digit, €, % or proper noun), the script-line rule. When its only
   // facts are card 1's own words ("Start with PDF orders into SAP; …"), it cites card 1's sources rather than being dropped.
   const pt = r.json?.path
@@ -180,5 +184,8 @@ if (import.meta.main) {
   assert.deepEqual(factWords("Start with emailed PDF orders into SAP; the same reader then handles the next type."), ["PDF", "SAP"])
   assert.deepEqual(factWords("Start small, then the next document type your team retypes."), [])
   assert.deepEqual(factWords("Then warranty claims for 40 Dealers."), ["40", "Dealers"])
+  assert.ok(CONDITIONAL.test("If those orders also arrive as PDFs, they join the retyping."))
+  assert.ok(!CONDITIONAL.test("Your own site says dealers order spare parts by email."))
+  assert.ok(!CONDITIONAL.test("You won it in May 2026."))
   console.log("researcher self-check ok")
 }
