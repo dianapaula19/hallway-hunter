@@ -83,11 +83,14 @@ export function checkCompliance(input: {
   const hallwayIds = new Set(sources.filter((s) => s.kind === "hallway").map((s) => s.id))
   if (!opps.length && !letter?.questions?.length) issues.push("no opportunity card or question survived the sanitizer (thin data)")
   if (speechSecs(lines) > MAX_SECS) issues.push(`audio runs about ${speechSecs(lines)} s, over ${MAX_SECS} s`)
-  // The letter must show research: at least one public citation (TED or site) when the store holds any.
+  // The letter must show research: at least one public citation (TED or site) when the store holds any. A page built on a
+  // hallway card is exempt: its "What we checked" line lists every public source read, and since round 7 a public fact
+  // that does not itself touch the hallway process is left off rather than tied to it by an assumption.
   const kind = new Map(sources.map((x) => [x.id, x.kind]))
   const cited = [...opps.flatMap((o) => [...o.claim.source_ids, ...o.formula.input_source_ids]), ...lines.flatMap((l) => l.source_ids), ...extra.flatMap((c) => c.source_ids)]
   const publicInStore = sources.filter((x) => x.kind === "ted" || x.kind === "site").length
-  if (publicInStore && !cited.some((id) => kind.get(id) === "ted" || kind.get(id) === "site"))
+  const hallwayCard = opps.some((o) => o.claim.source_ids.some((id) => kind.get(id) === "hallway"))
+  if (publicInStore && !hallwayCard && !cited.some((id) => kind.get(id) === "ted" || kind.get(id) === "site"))
     issues.push(`page cites no public source (TED or site) although the store holds ${publicInStore}`)
   // A cited public fact must not carry an uncited conclusion as if the source said it (the chips would make it look sourced).
   const why = letter?.why?.text && uncitedInference(letter.why.text)
@@ -128,7 +131,9 @@ if (import.meta.main) {
     opps: [{ title: "t", claim: { text: "c", source_ids: ["s_h"] }, formula: { input_source_ids: [] } as never }],
     lines: [{ host: "A", text: "Velho's AI analysts here.", source_ids: [] }],
   }).issues
-  assert.ok(page(null).some((i) => i.startsWith("page cites no public source")))
+  assert.ok(!page(null).some((i) => i.startsWith("page cites no public source"))) // hallway card: exempt
+  assert.ok(checkCompliance({ companyName: "X", lead: null, sources: [src("s_n", "note"), src("s_t", "ted")], letter: null,
+    opps: [{ title: "t", claim: { text: "c", source_ids: ["s_n"] }, formula: { input_source_ids: [] } as never }], lines: [] }).issues.some((i) => i.startsWith("page cites no public source")))
   assert.ok(!page({ recipient: null, scale: null, questions: [], checked: { text: "A framework.", source_ids: ["s_t"] } }).some((i) => i.startsWith("page cites")))
   // teams: accepted when the cited hallway note states the count (src() excerpts say "x", so this one must fail)
   const teams = { recipient: null, scale: null, questions: [], checked: { text: "A framework.", source_ids: ["s_t"] }, teams: { n: 6, text: "About 6 teams like this one across X, as said in the hallway.", source_ids: ["s_h"] } }
