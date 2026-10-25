@@ -3,8 +3,8 @@
 import { all, run } from "../db.ts"
 import { hasKey, runAgent, type Tool } from "../claude.ts"
 import type { Brief, BriefRow, Claim, Company, Source } from "../types.ts"
-import { evidenceBrief, finalizeBrief, storeBrief } from "./brief.ts"
-import { base, loadCompany, prhSource } from "./prh.ts"
+import { evidenceBrief, finalizeBrief, namesCompany, storeBrief } from "./brief.ts"
+import { loadCompany, prhSource } from "./prh.ts"
 import { fetchSite } from "./site.ts"
 import { stem, tedSearch } from "./ted.ts"
 
@@ -59,13 +59,6 @@ function tools(company: Company): Tool<any>[] {
 
 export interface ScoutResult { brief: BriefRow; sources: Source[]; mode: "model" | "evidence"; note: string | null; ms: number }
 
-// A TED source names this company when a listed winner (or the buyer) is its registered name, legal form aside.
-// tedExcerpt (ted.ts) lists only tenderers containing the stem, so "Fazer Latvija SIA" is there but is not "Karl Fazer".
-export function namesCompany(s: Pick<Source, "excerpt">, name: string): boolean {
-  if (s.excerpt.includes(`${name} is the buyer.`)) return true
-  const won = s.excerpt.match(/Tenderer\/winner incl\. (.+?)\.?$/)?.[1] ?? ""
-  return won.split(/,\s*/).some((w) => base(w) === base(name))
-}
 
 // No website on record (PRH has none for Oy Karl Fazer Ab): try www.<stem>.com, then .fi, and keep a page only if its
 // title names the stem; the found origin is stored so the night path reads the same site. Registered companies only.

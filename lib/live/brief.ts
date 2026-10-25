@@ -2,6 +2,15 @@
 import { all, get, insert, now, uid } from "../db.ts"
 import { sanitizeClaims } from "../night/sanitize.ts"
 import type { Brief, BriefRow, Claim, Company, Source } from "../types.ts"
+import { base } from "./prh.ts"
+
+// A TED source names this company when a listed winner (or the buyer) is its registered name, legal form aside.
+// tedExcerpt (ted.ts) lists only tenderers containing the stem, so "Fazer Latvija SIA" is there but is not "Karl Fazer".
+export function namesCompany(s: Pick<Source, "excerpt">, name: string): boolean {
+  if (s.excerpt.includes(`${name} is the buyer.`)) return true
+  const won = s.excerpt.match(/Tenderer\/winner incl\. (.+?)\.?$/)?.[1] ?? ""
+  return won.split(/,\s*/).some((w) => base(w) === base(name))
+}
 
 export const MAX_WORDS = 120
 const words = (s: string) => s.split(/\s+/).filter(Boolean)
@@ -88,15 +97,23 @@ export type LatestBrief = { name: string; created_at: string; secs: number | nul
 
 // The newest stored brief that is not thin data, with only the sources it cites (same company), for the
 // "this is what the live half looks like" card on / and /capture. Read-only; nothing is generated.
+// Skips a brief whose signals rest only on subsidiary or namesake TED awards (the judge's "Fazer Finland Oy" brief, built on
+// Fazer Latvija SIA's tenders, was what / showed).
 export function latestBrief(): LatestBrief | null {
-  const row = get<BriefRow & { name: string; started_at: string | null; ended_at: string | null }>(
+  const rows = all<BriefRow & { name: string; started_at: string | null; ended_at: string | null }>(
     `SELECT b.*, c.name, r.started_at, r.ended_at FROM briefs b JOIN companies c ON c.id = b.company_id
        LEFT JOIN agent_runs r ON r.id = b.run_id AND r.status = 'ok'
-      WHERE json_extract(b.brief, '$.thin_data') = 0 ORDER BY b.created_at DESC LIMIT 1`)
+      WHERE json_extract(b.brief, '$.thin_data') = 0 ORDER BY b.created_at DESC LIMIT 20`)
+  const srcOf = (row: BriefRow) => {
+    const ids = [...new Set([row.brief.what_they_do, ...row.brief.signals, row.brief.objection].flatMap((c) => c.source_ids))]
+    return { ids, found: ids.length ? all<Source>(`SELECT * FROM sources WHERE company_id = ? AND id IN (${ids.map(() => "?").join(",")})`, row.company_id, ...ids) : [] }
+  }
+  const ownSignal = (row: BriefRow & { name: string }, found: Source[]) =>
+    row.brief.signals.some((c) => c.source_ids.some((id) => { const s = found.find((x) => x.id === id); return s && (s.kind !== "ted" || namesCompany(s, row.name)) }))
+  const row = rows.find((r) => ownSignal(r, srcOf(r).found))
   if (!row) return null
   const b = row.brief
-  const ids = [...new Set([b.what_they_do, ...b.signals, b.objection].flatMap((c) => c.source_ids))]
-  const found = ids.length ? all<Source>(`SELECT * FROM sources WHERE company_id = ? AND id IN (${ids.map(() => "?").join(",")})`, row.company_id, ...ids) : []
+  const { ids, found } = srcOf(row)
   return {
     name: row.name, created_at: row.created_at, word_count: row.word_count, brief: b,
     secs: row.started_at && row.ended_at ? (Date.parse(row.ended_at) - Date.parse(row.started_at)) / 1000 : null,

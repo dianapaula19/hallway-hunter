@@ -76,7 +76,7 @@ assert.ok(!fr.includes("Fazer Konserttitoimisto Oy"), "off-industry namesake pus
 assert.equal(parentLive("Fazer", fazer)?.business_id, "0202669-3", "the one head office named Fazer is auto-picked")
 assert.equal(parentLive("Fazer Finland", fazer), null)
 assert.equal(rank("Fazer Finland", fazer)[0].name, "Fazer Finland Oy", "an exact match still wins")
-const { namesCompany } = await import("./scout.ts")
+const { namesCompany } = await import("./brief.ts")
 assert.equal(namesCompany({ excerpt: `2026-08-01 contract award: "Food". Buyer: Aluksne. Tenderer/winner incl. Fazer Latvija SIA.` }, "Oy Karl Fazer Ab"), false, "a subsidiary abroad is not the company")
 assert.equal(namesCompany({ excerpt: `2026-10-01 contract award: "x". Buyer: Stadt. Tenderer/winner incl. Kemira Oyj.` }, "Kemira Oyj"), true)
 
@@ -87,6 +87,8 @@ assert.equal(lev("", "abc"), 3)
 // ---- TED: fuzzy hits must be filtered to real name matches; diacritics-insensitive ----
 assert.equal(stem("Wärtsilä Oyj Abp"), "Wärtsilä")
 assert.equal(stem("Testi Kuljetus Oy"), "Testi")
+assert.equal(stem("Oy Karl Fazer Ab"), "Fazer", "legal form first: the family name is the brand")
+assert.equal(stem("Oy Hartwall Ab"), "Hartwall")
 const notices: TedNotice[] = [
   { "publication-number": "111-2026", "publication-date": "2026-09-23+02:00", "notice-type": "can-standard", "notice-title": { eng: "Forest machines" }, "buyer-name": { fin: ["Kaupunki X"] }, "organisation-name-tenderer": { fin: ["TESTI Kuljetus Oy"] } },
   { "publication-number": "222-2026", "notice-type": "cn-standard", "notice-title": { fin: "Kuljetuspalvelut" }, "buyer-name": { fin: ["Testi Kuljetus Oy"] } },
